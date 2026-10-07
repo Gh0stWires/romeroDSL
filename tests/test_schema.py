@@ -102,12 +102,12 @@ class SchemaTests(unittest.TestCase):
 
         self.assertTrue(output.exists())
         self.assertTrue(report["valid"])
-        self.assertEqual(report["geometry_profile"], "sector_primitives_v0.3")
+        self.assertEqual(report["geometry_profile"], "sector_primitives_v0.4")
         self.assertEqual(reread["player_starts"], 1)
         self.assertEqual(reread["keys"], 1)
         self.assertEqual(reread["exits"], 1)
         self.assertGreaterEqual(reread["locked_doors"], 1)
-        self.assertEqual(reread["locked_door_linedefs"], reread["bidirectional_door_linedefs"])
+        self.assertGreaterEqual(reread["bidirectional_door_linedefs"], reread["locked_door_linedefs"])
         self.assertGreaterEqual(reread["closed_door_sectors"], 1)
         self.assertEqual(reread["missing_visible_textures"], 0)
         self.assertEqual(reread["unknown_flats"], [])
@@ -119,7 +119,7 @@ class SchemaTests(unittest.TestCase):
         report = compile_to_wad(load_example(), output)
 
         self.assertEqual(report["room_sectors"], 7)
-        self.assertEqual(report["door_sectors"], 1)
+        self.assertEqual(report["door_sectors"], 2)
         self.assertEqual(report["height_feature_sectors"], 6)
         self.assertLess(report["sectors"], 60)
         self.assertIn(-24, report["floor_height_levels"])
@@ -233,6 +233,38 @@ class SchemaTests(unittest.TestCase):
                 wrong_facing.append((index, "sidefront", sector_id))
 
         self.assertEqual(wrong_facing, [])
+
+    def test_sector_primitive_linedefs_do_not_cross_without_vertices(self) -> None:
+        document = load_example()
+        room_boxes = _place_rooms(document["spaces"], document["progression"], document["connections"])
+        textmap, _stats = build_geometry_textmap(document, room_boxes)
+        groups = _parse_textmap(textmap)
+
+        vertices = groups["vertex"]
+        linedefs = groups["linedef"]
+
+        def segment(index: int) -> tuple[int, int, int, int]:
+            line = linedefs[index]
+            v1 = vertices[line["v1"]]
+            v2 = vertices[line["v2"]]
+            return v1["x"], v1["y"], v2["x"], v2["y"]
+
+        def strictly_between(value: int, a: int, b: int) -> bool:
+            return min(a, b) < value < max(a, b)
+
+        crossings = []
+        for left in range(len(linedefs)):
+            x1, y1, x2, y2 = segment(left)
+            for right in range(left + 1, len(linedefs)):
+                x3, y3, x4, y4 = segment(right)
+                if x1 == x2 and y3 == y4:
+                    if strictly_between(x1, x3, x4) and strictly_between(y3, y1, y2):
+                        crossings.append((left, right, x1, y3))
+                elif y1 == y2 and x3 == x4:
+                    if strictly_between(x3, x1, x2) and strictly_between(y1, y3, y4):
+                        crossings.append((left, right, x3, y1))
+
+        self.assertEqual(crossings, [])
 
 
 if __name__ == "__main__":

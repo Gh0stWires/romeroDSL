@@ -253,7 +253,7 @@ def write_geometry_wad(
         {
             "source_title": document.get("title"),
             "cell_size": cell_size,
-            "geometry_profile": "sector_primitives_v0.3",
+            "geometry_profile": "sector_primitives_v0.4",
             "room_sectors": stats.room_sectors,
             "corridor_sectors": stats.corridor_sectors,
             "door_sectors": stats.door_sectors,
@@ -331,9 +331,11 @@ def _collect_openings(connections: list[dict[str, Any]], rects: dict[str, Rect])
         target = str(connection["to"])
         if source not in rects or target not in rects:
             continue
-        source_side, target_side = _connection_sides(rects[source], rects[target])
-        openings[source].append(_opening_for_side(rects[source], source_side))
-        openings[target].append(_opening_for_side(rects[target], target_side))
+        _source_side, _target_side, _source_point, _target_point, source_opening, target_opening = _connection_portals(
+            rects[source], rects[target]
+        )
+        openings[source].append(source_opening)
+        openings[target].append(target_opening)
     return openings
 
 
@@ -352,6 +354,49 @@ def _opening_for_side(rect: Rect, side: Side, width: int = 128) -> Opening:
     if side in {"left", "right"}:
         return Opening(side=side, start=cy - half, end=cy + half)
     return Opening(side=side, start=cx - half, end=cx + half)
+
+
+def _connection_portals(source: Rect, target: Rect, width: int = 128) -> tuple[Side, Side, Point, Point, Opening, Opening]:
+    source_side, target_side = _connection_sides(source, target)
+    half = width // 2
+    if source_side in {"left", "right"}:
+        y = _aligned_axis_position(source[1], source[3], target[1], target[3], half)
+        source_point = (source[0] if source_side == "left" else source[2], y)
+        target_point = (target[0] if target_side == "left" else target[2], y)
+        return (
+            source_side,
+            target_side,
+            source_point,
+            target_point,
+            Opening(source_side, y - half, y + half),
+            Opening(target_side, y - half, y + half),
+        )
+    x = _aligned_axis_position(source[0], source[2], target[0], target[2], half)
+    source_point = (x, source[3] if source_side == "top" else source[1])
+    target_point = (x, target[3] if target_side == "top" else target[1])
+    return (
+        source_side,
+        target_side,
+        source_point,
+        target_point,
+        Opening(source_side, x - half, x + half),
+        Opening(target_side, x - half, x + half),
+    )
+
+
+def _aligned_axis_position(source_lo: int, source_hi: int, target_lo: int, target_hi: int, half_width: int) -> int:
+    lo = max(source_lo + half_width, target_lo + half_width)
+    hi = min(source_hi - half_width, target_hi - half_width)
+    desired = (_axis_center(source_lo, source_hi) + _axis_center(target_lo, target_hi)) // 2
+    if lo <= hi:
+        return max(lo, min(hi, desired))
+    # No perpendicular overlap. Use the midpoint between the two room centers;
+    # the L-shaped fallback will route outside the rooms.
+    return desired
+
+
+def _axis_center(lo: int, hi: int) -> int:
+    return (lo + hi) // 2
 
 
 def _add_room_boundary(
@@ -418,9 +463,9 @@ def _add_connection(
     door_tag: int,
     materials: dict[str, str],
 ) -> dict[str, int]:
-    source_side, target_side = _connection_sides(source, target)
-    sx, sy = _opening_center(source, source_side)
-    tx, ty = _opening_center(target, target_side)
+    source_side, _target_side, source_point, target_point, _source_opening, _target_opening = _connection_portals(source, target)
+    sx, sy = source_point
+    tx, ty = target_point
     floor = 0
     is_door = connection.get("type") in {"door", "locked_door", "keyed_door"}
     lock_color = str(connection.get("key")) if connection.get("type") in {"locked_door", "keyed_door"} else None
@@ -599,8 +644,8 @@ def _pillar_rects(rect: Rect, count: int) -> list[Rect]:
 
 def _feature_rect(rect: Rect, placement: str, index: int) -> Rect:
     x1, y1, x2, y2 = rect
-    width = min(256, max(128, (x2 - x1) // 3))
-    height = min(192, max(128, (y2 - y1) // 4))
+    width = min(192, max(128, (x2 - x1) // 4))
+    height = min(160, max(128, (y2 - y1) // 4))
     if placement == "north":
         return (x2 - width - 128, y2 - height - 128 - index * 16, x2 - 128, y2 - 128 - index * 16)
     return (x1 + 128, y1 + 128 + index * 16, x1 + 128 + width, y1 + 128 + height + index * 16)
