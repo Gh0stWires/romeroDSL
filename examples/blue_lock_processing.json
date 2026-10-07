@@ -28,6 +28,16 @@
       "ceilings": ["CEIL3_5"],
       "doors": ["BIGDOOR2"]
     },
+    "materials": {
+      "floor": {"type": "techbase", "texture_id": 5},
+      "ceiling": {"flat": "CEIL3_5"},
+      "wall": {"texture_id": 10},
+      "upper_wall": {"texture": "STARTAN2"},
+      "lower_wall": {"texture": "STARTAN2"},
+      "door": {"texture_id": 20},
+      "door_track": {"texture_id": 21},
+      "exit_switch": {"texture_id": 30}
+    },
     "lighting": {
       "base": "medium",
       "contrast": "high",
@@ -76,6 +86,11 @@
       "floor_height": 0,
       "ceiling_height": 128,
       "mood": "safe_intro",
+      "materials": {
+        "floor": "FLOOR0_1",
+        "ceiling": "CEIL3_5",
+        "wall": "STARTAN2"
+      },
       "things": {
         "player_start": true,
         "items": ["shotgun", "shells_small"]
@@ -103,6 +118,13 @@
       "shape": "irregular_octagonal",
       "floor_height": 0,
       "ceiling_height": 192,
+      "materials": {
+        "floor": "FLAT20",
+        "ceiling": "CEIL3_5",
+        "wall": "METAL2",
+        "upper_wall": "METAL2",
+        "lower_wall": "STEP1"
+      },
       "height_topology": {
         "base_floor": 0,
         "ceiling": 192,
@@ -154,6 +176,12 @@
       "shape": "rectangle_with_side_alcoves",
       "floor_height": -16,
       "ceiling_height": 144,
+      "materials": {
+        "floor": "FLOOR0_2",
+        "ceiling": "CEIL3_5",
+        "wall": "STONE2",
+        "lower_wall": "STONE2"
+      },
       "contains": {
         "key": "blue"
       },
@@ -190,6 +218,12 @@
       "shape": "rectangle",
       "floor_height": 0,
       "ceiling_height": 128,
+      "materials": {
+        "floor": "FLOOR0_3",
+        "ceiling": "CEIL3_5",
+        "wall": "STARTAN3",
+        "exit_switch": "SW1EXIT"
+      },
       "contains": {
         "exit_switch": true
       }

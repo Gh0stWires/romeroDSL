@@ -14,17 +14,19 @@ This keeps room topology, height/elevation, and key progression as first-class l
 
 ## Current status
 
-This is v0.3: a GitHub-ready foundation containing:
+This is v0.4: a GitHub-ready foundation containing:
 
 - a canonical JSON form of the DSL
 - an example Doom II techbase map contract
 - a Python validator for references and progression invariants
 - a debug cell-layout compiler
 - a sector-primitive geometry compiler that turns semantic rooms/connections into UDMF sectors
+- a material layer for floor, ceiling, wall, upper/lower, door, door-track, and exit-switch surfaces
+- render-surface validation for missing visible textures and invalid Doom II flats/textures
 - a minimal dependency-free UDMF/PWAD exporter
 - unit tests
 
-The v0.3 WAD exporter uses real room sectors, corridor sectors, tagged door sectors, and intra-room height-feature sectors for pillars, platforms, and pits. Geometry is still simple and has not been engine-playtested, but the path now proves semantic DSL authorship can survive into much cleaner Doom geometry than the cell-grid prototype.
+The v0.4 WAD exporter uses real room sectors, corridor sectors, tagged door sectors, and intra-room height-feature sectors for pillars, platforms, and pits. It also resolves semantic material declarations into concrete Doom II flats/textures and rejects missing visible surface textures that can create hall-of-mirrors artifacts in Zandronum.
 
 ## Install for development
 
@@ -52,7 +54,7 @@ valid: examples/blue_lock_processing.json
 python -m romerodsl export-wad examples/blue_lock_processing.json --output build/blue_lock_processing.wad
 ```
 
-The exported WAD should contain one player start, one exit, a blue key, at least one blue-locked door, monsters, items, real room/corridor/door sectors, and sector height variation from the DSL. It has not been engine-playtested yet.
+The exported WAD should contain one player start, one exit, a blue key, at least one blue-locked door, monsters, items, real room/corridor/door sectors, sector height variation from the DSL, zero missing visible textures, and no unknown Doom II flats/textures.
 
 ## Emit an abstract geometry plan
 
@@ -75,6 +77,7 @@ The DSL should be high-level, but not vague. It should capture what a Doom mappe
 - height topology inside rooms: stairs, pits, pillars, platforms, ledges
 - combat pacing and monster groups
 - weapon/ammo/health economy
+- material intent for floors, ceilings, walls, steps, doors, tracks, and switches
 - validation requirements
 
 The compiler may make valid geometry from those decisions, but it should not invent missing progression.
@@ -84,10 +87,11 @@ The compiler may make valid geometry from those decisions, but it should not inv
 1. v0.1: DSL schema, examples, validator, abstract plan compiler.
 2. v0.2: WAD/UDMF compiler for a constrained subset: rooms, hallways, doors, blue/red/yellow locks, starts, exits, monsters, items.
 3. v0.3: Replace the cell-block compiler with sector-primitive geometry: room sectors, corridor sectors, tagged door sectors, and intra-room height-feature sectors.
-4. v0.4: Improve geometry authorship: polygonal/irregular rooms, doorway cutouts, stairs, lifts, safer monster/item placement, and engine playtesting.
-5. v0.5: Extraction from real WAD graph caches into canonical DSL training pairs.
-6. v0.6: LoRA fine-tune target: `prompt -> romeroDSL`.
-7. v0.7: Validator-guided generation loop and playability reports.
+4. v0.4: Add material-aware surfaces, render-surface validation, and fix Zandronum HOM defects found during engine playtesting.
+5. v0.5: Improve geometry authorship: polygonal/irregular rooms, doorway cutouts, stairs, lifts, safer monster/item placement, and deeper engine playtesting.
+6. v0.6: Extraction from real WAD graph caches into canonical DSL training pairs.
+7. v0.7: LoRA fine-tune target: `prompt -> romeroDSL`.
+8. v0.8: Validator-guided generation loop and playability reports.
 
 ## Repository layout
 

@@ -13,6 +13,8 @@ import struct
 from pathlib import Path
 from typing import Any
 
+from romerodsl.materials import VALID_DOOM2_FLATS, VALID_DOOM2_TEXTURES
+
 EMPTY = "empty"
 FLOOR = "floor"
 DOOR = "door"
@@ -330,6 +332,23 @@ def validate_wad(path: Path) -> dict[str, Any]:
     locked_door_tags = {
         line.get("arg0") for line in door_lines if line.get("arg0", 0) > 0 and line.get("locknumber", 0) > 0
     }
+    missing_visible_textures = _missing_visible_textures(linedefs, sidedefs, sectors)
+    unknown_flats = sorted(
+        {
+            texture
+            for sector in sectors
+            for texture in (sector.get("texturefloor"), sector.get("textureceiling"))
+            if isinstance(texture, str) and texture not in VALID_DOOM2_FLATS and texture != "-"
+        }
+    )
+    unknown_textures = sorted(
+        {
+            texture
+            for side in sidedefs
+            for texture in (side.get("texturemiddle"), side.get("texturebottom"), side.get("texturetop"))
+            if isinstance(texture, str) and texture not in VALID_DOOM2_TEXTURES and texture != "-"
+        }
+    )
     return {
         "valid": True,
         "namespace": "ZDoom",
@@ -353,9 +372,43 @@ def validate_wad(path: Path) -> dict[str, Any]:
             sector["heightfloor"] == sector["heightceiling"] for sector in sectors
         ),
         "floor_height_levels": sorted({sector["heightfloor"] for sector in sectors}),
+        "missing_visible_textures": len(missing_visible_textures),
+        "missing_visible_texture_linedefs": missing_visible_textures[:20],
+        "unknown_flats": unknown_flats,
+        "unknown_textures": unknown_textures,
         "monsters": sum(thing["type"] in {3001, 3002, 3003, 3004, 3005, 3006} for thing in things),
         "engine_tested": False,
     }
+
+
+def _missing_visible_textures(
+    linedefs: list[dict[str, Any]],
+    sidedefs: list[dict[str, Any]],
+    sectors: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    missing: list[dict[str, Any]] = []
+    for index, line in enumerate(linedefs):
+        front = sidedefs[line["sidefront"]]
+        if line.get("sideback", -1) < 0:
+            if front.get("texturemiddle") == "-":
+                missing.append({"linedef": index, "side": "front", "surface": "middle"})
+            continue
+        back = sidedefs[line["sideback"]]
+        front_sector = sectors[front["sector"]]
+        back_sector = sectors[back["sector"]]
+        if front.get("texturemiddle") != "-" or back.get("texturemiddle") != "-":
+            missing.append({"linedef": index, "side": "both", "surface": "middle_should_be_clear"})
+        if front_sector["heightfloor"] != back_sector["heightfloor"]:
+            if front.get("texturebottom") == "-":
+                missing.append({"linedef": index, "side": "front", "surface": "lower"})
+            if back.get("texturebottom") == "-":
+                missing.append({"linedef": index, "side": "back", "surface": "lower"})
+        if front_sector["heightceiling"] != back_sector["heightceiling"]:
+            if front.get("texturetop") == "-":
+                missing.append({"linedef": index, "side": "front", "surface": "upper"})
+            if back.get("texturetop") == "-":
+                missing.append({"linedef": index, "side": "back", "surface": "upper"})
+    return missing
 
 
 def _read_textmap(path: Path) -> str:

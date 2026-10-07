@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from romerodsl.geometry import write_geometry_wad
+from romerodsl.materials import SURFACE_ROLES, resolve_materials
 from romerodsl.schema import validate_document
 from romerodsl.wad import (
     AMMO,
@@ -54,6 +55,7 @@ def compile_to_plan(document: dict[str, Any]) -> dict[str, Any]:
                 "floor_height": space.get("floor_height", 0),
                 "ceiling_height": space.get("ceiling_height", 128),
                 "height_features": space.get("height_topology", {}).get("features", []),
+                "materials": resolve_materials(document, space),
             }
             for space in spaces
         ],
@@ -89,6 +91,9 @@ def compile_to_layout(document: dict[str, Any]) -> dict[str, Any]:
     width = max(box["c"] + box["w"] for box in room_boxes.values()) + 3
     grid = [["empty" for _ in range(width)] for _ in range(height)]
     floor_heights = [[0 for _ in range(width)] for _ in range(height)]
+    surface_materials = {
+        role: [["" for _ in range(width)] for _ in range(height)] for role in SURFACE_ROLES
+    }
     key_colors: dict[str, str] = {}
     door_locks: dict[str, str] = {}
     room_centers: dict[str, Cell] = {}
@@ -96,10 +101,13 @@ def compile_to_layout(document: dict[str, Any]) -> dict[str, Any]:
     for space_id, box in room_boxes.items():
         space = spaces[space_id]
         floor_height = int(space.get("floor_height", 0))
+        materials = resolve_materials(document, space)
         for r in range(box["r"], box["r"] + box["h"]):
             for c in range(box["c"], box["c"] + box["w"]):
                 grid[r][c] = FLOOR
                 floor_heights[r][c] = floor_height
+                for role, texture in materials.items():
+                    surface_materials[role][r][c] = texture
         room_centers[space_id] = (box["r"] + box["h"] // 2, box["c"] + box["w"] // 2)
         _apply_height_features(space, box, grid, floor_heights)
 
@@ -117,9 +125,12 @@ def compile_to_layout(document: dict[str, Any]) -> dict[str, Any]:
             target_height=int(spaces[target].get("floor_height", 0)),
             token=DOOR if connection.get("type") in {"door", "locked_door", "keyed_door"} else FLOOR,
         )
+        source_materials = resolve_materials(document, spaces[source])
+        _apply_path_materials(surface_materials, room_centers[source], room_centers[target], source_materials)
         if connection.get("type") in {"locked_door", "keyed_door"}:
             color = str(connection.get("key", "blue"))
             door_locks[_cell_key(door_cell)] = color
+            surface_materials["door"][door_cell[0]][door_cell[1]] = source_materials["door"]
 
     _place_progression_things(document, room_boxes, grid, floor_heights, key_colors)
     _place_space_things(document, room_boxes, grid)
@@ -131,6 +142,7 @@ def compile_to_layout(document: dict[str, Any]) -> dict[str, Any]:
         "grid": grid,
         "floor_heights": floor_heights,
         "rooms": room_boxes,
+        "surface_materials": surface_materials,
         "key_colors": key_colors,
         "door_locks": door_locks,
     }
@@ -312,6 +324,35 @@ def _carve_corridor(
         grid[pr][pc] = token if token == DOOR and index == door_index else FLOOR
         floor_heights[pr][pc] = source_height if index <= door_index else target_height
     return door_cell
+
+
+def _apply_path_materials(
+    surface_materials: dict[str, list[list[str]]],
+    start: Cell,
+    end: Cell,
+    materials: dict[str, str],
+) -> None:
+    r, c = start
+    end_r, end_c = end
+    step_c = 1 if end_c >= c else -1
+    while c != end_c:
+        _set_cell_materials(surface_materials, r, c, materials)
+        c += step_c
+    step_r = 1 if end_r >= r else -1
+    while r != end_r:
+        _set_cell_materials(surface_materials, r, c, materials)
+        r += step_r
+    _set_cell_materials(surface_materials, end_r, end_c, materials)
+
+
+def _set_cell_materials(
+    surface_materials: dict[str, list[list[str]]],
+    r: int,
+    c: int,
+    materials: dict[str, str],
+) -> None:
+    for role, texture in materials.items():
+        surface_materials[role][r][c] = texture
 
 
 def _place_progression_things(

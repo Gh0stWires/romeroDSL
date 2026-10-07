@@ -39,6 +39,15 @@ class SchemaTests(unittest.TestCase):
         self.assertFalse(report.valid)
         self.assertTrue(any("secret space" in error for error in report.errors))
 
+    def test_invalid_space_material_fails(self) -> None:
+        document = load_example()
+        document["spaces"][0]["materials"] = {"wall": "NOT_A_TEXTURE"}
+
+        report = validate_document(document)
+
+        self.assertFalse(report.valid)
+        self.assertTrue(any("invalid wall material" in error for error in report.errors))
+
     def test_compile_to_plan_preserves_progression_gate(self) -> None:
         plan = compile_to_plan(load_example())
 
@@ -70,6 +79,22 @@ class SchemaTests(unittest.TestCase):
         self.assertIn(192, {height for row in layout["floor_heights"] for height in row})
         self.assertIn(-24, {height for row in layout["floor_heights"] for height in row})
 
+    def test_compile_to_layout_preserves_material_layer(self) -> None:
+        document = load_example()
+        document["spaces"][0]["materials"] = {
+            "floor": "FLOOR0_1",
+            "ceiling": "CEIL3_5",
+            "wall": "STARTAN2",
+        }
+
+        layout = compile_to_layout(document)
+        start_box = layout["rooms"]["start_room"]
+        cell = (start_box["r"] + 1, start_box["c"] + 1)
+
+        self.assertEqual(layout["surface_materials"]["floor"][cell[0]][cell[1]], "FLOOR0_1")
+        self.assertEqual(layout["surface_materials"]["ceiling"][cell[0]][cell[1]], "CEIL3_5")
+        self.assertEqual(layout["surface_materials"]["wall"][cell[0]][cell[1]], "STARTAN2")
+
     def test_compile_to_wad_writes_valid_udmf_pwad(self) -> None:
         output = Path(__file__).resolve().parents[1] / "build" / "test_blue_lock_processing.wad"
         report = compile_to_wad(load_example(), output)
@@ -84,6 +109,9 @@ class SchemaTests(unittest.TestCase):
         self.assertGreaterEqual(reread["locked_doors"], 1)
         self.assertEqual(reread["locked_door_linedefs"], reread["bidirectional_door_linedefs"])
         self.assertGreaterEqual(reread["closed_door_sectors"], 1)
+        self.assertEqual(reread["missing_visible_textures"], 0)
+        self.assertEqual(reread["unknown_flats"], [])
+        self.assertEqual(reread["unknown_textures"], [])
         self.assertGreater(reread["monsters"], 0)
 
     def test_sector_primitive_compiler_uses_rooms_and_height_feature_sectors(self) -> None:
@@ -160,6 +188,51 @@ class SchemaTests(unittest.TestCase):
                     missing.append((index, side_key, side.get("texturetop"), side.get("texturebottom")))
 
         self.assertEqual(missing, [])
+
+    def test_two_sided_linedef_sidedefs_face_their_assigned_sectors(self) -> None:
+        document = load_example()
+        room_boxes = _place_rooms(document["spaces"], document["progression"], document["connections"])
+        textmap, _stats = build_geometry_textmap(document, room_boxes)
+        groups = _parse_textmap(textmap)
+
+        vertices = groups["vertex"]
+        sidedefs = groups["sidedef"]
+        linedefs = groups["linedef"]
+        sector_points: dict[int, list[tuple[int, int]]] = {index: [] for index, _sector in enumerate(groups["sector"])}
+        for line in linedefs:
+            for side_key in ("sidefront", "sideback"):
+                side_id = line.get(side_key, -1)
+                if side_id < 0:
+                    continue
+                sector_id = sidedefs[side_id]["sector"]
+                sector_points[sector_id].append((vertices[line["v1"]]["x"], vertices[line["v1"]]["y"]))
+                sector_points[sector_id].append((vertices[line["v2"]]["x"], vertices[line["v2"]]["y"]))
+        centroids = {
+            sector_id: (
+                sum(x for x, _y in points) / len(points),
+                sum(y for _x, y in points) / len(points),
+            )
+            for sector_id, points in sector_points.items()
+            if points
+        }
+
+        wrong_facing = []
+        for index, line in enumerate(linedefs):
+            if line.get("sideback", -1) < 0:
+                continue
+            v1 = vertices[line["v1"]]
+            v2 = vertices[line["v2"]]
+            dx = v2["x"] - v1["x"]
+            dy = v2["y"] - v1["y"]
+            sector_id = sidedefs[line["sidefront"]]["sector"]
+            centroid_x, centroid_y = centroids[sector_id]
+            cross = dx * (centroid_y - v1["y"]) - dy * (centroid_x - v1["x"])
+            if abs(cross) < 1e-6:
+                continue
+            if cross >= 0:
+                wrong_facing.append((index, "sidefront", sector_id))
+
+        self.assertEqual(wrong_facing, [])
 
 
 if __name__ == "__main__":

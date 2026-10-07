@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from romerodsl.materials import validate_material_declaration
+
 SUPPORTED_DSL_VERSION = "0.1"
 KEY_COLORS = {"blue", "red", "yellow"}
 REQUIRED_TOP_LEVEL_KEYS = {
@@ -84,6 +86,7 @@ def validate_document(document: dict[str, Any]) -> ValidationReport:
 
     _validate_spaces(spaces, errors, warnings)
     _validate_connections(connections, space_ids, errors)
+    _validate_theme_materials(document.get("theme"), errors)
     _validate_critical_path(progression, space_ids, connection_ids, errors, warnings)
     _validate_keys_and_gates(progression, space_ids, connection_ids, secret_space_ids, errors, warnings)
     _validate_validation_contract(document.get("validation"), warnings)
@@ -173,6 +176,8 @@ def _validate_spaces(spaces: list[Any], errors: list[str], warnings: list[str]) 
         if isinstance(height_topology, dict):
             _validate_height_topology(space_id, height_topology, errors)
 
+        validate_material_declaration(space.get("materials"), f"space {space_id!r}", errors)
+
     if player_start_count != 1:
         errors.append(f"expected exactly one player start space, found {player_start_count}")
     if exit_count != 1:
@@ -196,6 +201,12 @@ def _validate_height_topology(space_id: str, height_topology: dict[str, Any], er
             errors.append(
                 f"space {space_id!r} height feature {index} has ceiling lower than floor"
             )
+
+
+def _validate_theme_materials(value: Any, errors: list[str]) -> None:
+    if not isinstance(value, dict):
+        return
+    validate_material_declaration(value.get("materials"), "theme", errors)
 
 
 def _validate_connections(connections: list[Any], space_ids: set[str], errors: list[str]) -> None:

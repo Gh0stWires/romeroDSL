@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from romerodsl.materials import resolve_materials
 from romerodsl.wad import (
     DOOR_LOCK_NUMBERS,
     DOOR_TEXTURE,
@@ -135,7 +136,10 @@ class UdmfBuilder:
 
     def add_inner_rect(self, rect: Rect, sector: int, parent_sector: int, *, texture: str = WALL_TEXTURE) -> None:
         x1, y1, x2, y2 = rect
-        corners = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+        # Emit clockwise so the front sidedef, assigned to the inner feature
+        # sector, faces the feature interior. Reversed inner loops expose backsides
+        # to the player and can render as hall-of-mirrors in Zandronum.
+        corners = [(x1, y1), (x1, y2), (x2, y2), (x2, y1)]
         for a, b in zip(corners, corners[1:] + corners[:1], strict=True):
             front_side = len(self.sidedefs)
             self.sidedefs.append(
@@ -218,10 +222,10 @@ class UdmfBuilder:
         # does not currently expose them. Zandronum treats any later-exposed
         # upper/lower gap as a missing texture/HOM surface, and harmless hidden
         # textures are safer than sparse '-' placeholders for generated maps.
-        front["texturebottom"] = WALL_TEXTURE
-        back["texturebottom"] = WALL_TEXTURE
-        front["texturetop"] = WALL_TEXTURE
-        back["texturetop"] = WALL_TEXTURE
+        front["texturebottom"] = front.get("texturebottom") if front.get("texturebottom") != "-" else WALL_TEXTURE
+        back["texturebottom"] = back.get("texturebottom") if back.get("texturebottom") != "-" else WALL_TEXTURE
+        front["texturetop"] = front.get("texturetop") if front.get("texturetop") != "-" else WALL_TEXTURE
+        back["texturetop"] = back.get("texturetop") if back.get("texturetop") != "-" else WALL_TEXTURE
 
     def _apply_door_textures(self, line_id: int) -> None:
         line = self.linedefs[line_id]
@@ -276,9 +280,15 @@ def build_geometry_textmap(
     for space_id, space in spaces.items():
         floor = int(space.get("floor_height", 0))
         ceiling = int(space.get("ceiling_height", floor + 128))
-        sector_id = builder.add_sector(floor=floor, ceiling=ceiling)
+        materials = resolve_materials(document, space)
+        sector_id = builder.add_sector(
+            floor=floor,
+            ceiling=ceiling,
+            texturefloor=materials["floor"],
+            textureceiling=materials["ceiling"],
+        )
         room_sector_ids[space_id] = sector_id
-        _add_room_boundary(builder, rects[space_id], sector_id, openings.get(space_id, []))
+        _add_room_boundary(builder, rects[space_id], sector_id, openings.get(space_id, []), materials)
         stats.room_sectors += 1
 
     door_tag = 100
@@ -287,7 +297,14 @@ def build_geometry_textmap(
         target = str(connection["to"])
         if source not in rects or target not in rects:
             continue
-        created = _add_connection(builder, rects[source], rects[target], connection, door_tag)
+        created = _add_connection(
+            builder,
+            rects[source],
+            rects[target],
+            connection,
+            door_tag,
+            resolve_materials(document, spaces[source]),
+        )
         stats.corridor_sectors += created["corridors"]
         stats.door_sectors += created["doors"]
         door_tag += created["doors"]
@@ -298,6 +315,7 @@ def build_geometry_textmap(
             space,
             rects[space_id],
             room_sector_ids[space_id],
+            resolve_materials(document, space),
         )
 
     _add_progression_things(builder, document, rects, stats)
@@ -336,23 +354,45 @@ def _opening_for_side(rect: Rect, side: Side, width: int = 128) -> Opening:
     return Opening(side=side, start=cx - half, end=cx + half)
 
 
-def _add_room_boundary(builder: UdmfBuilder, rect: Rect, sector: int, openings: list[Opening]) -> None:
+def _add_room_boundary(
+    builder: UdmfBuilder,
+    rect: Rect,
+    sector: int,
+    openings: list[Opening],
+    materials: dict[str, str],
+) -> None:
     x1, y1, x2, y2 = rect
     by_side = {side: [opening for opening in openings if opening.side == side] for side in ("left", "right", "top", "bottom")}
-    _add_vertical_side(builder, x1, y1, y2, sector, by_side["left"])
-    _add_horizontal_side(builder, x1, x2, y2, sector, by_side["bottom"])
-    _add_vertical_side(builder, x2, y2, y1, sector, by_side["right"])
-    _add_horizontal_side(builder, x2, x1, y1, sector, by_side["top"])
+    _add_vertical_side(builder, x1, y1, y2, sector, by_side["left"], materials["wall"])
+    _add_horizontal_side(builder, x1, x2, y2, sector, by_side["bottom"], materials["wall"])
+    _add_vertical_side(builder, x2, y2, y1, sector, by_side["right"], materials["wall"])
+    _add_horizontal_side(builder, x2, x1, y1, sector, by_side["top"], materials["wall"])
 
 
-def _add_vertical_side(builder: UdmfBuilder, x: int, start_y: int, end_y: int, sector: int, openings: list[Opening]) -> None:
+def _add_vertical_side(
+    builder: UdmfBuilder,
+    x: int,
+    start_y: int,
+    end_y: int,
+    sector: int,
+    openings: list[Opening],
+    texture: str,
+) -> None:
     for a, b in _split_axis(start_y, end_y, [(opening.start, opening.end) for opening in openings]):
-        builder.add_line((x, a), (x, b), sector)
+        builder.add_line((x, a), (x, b), sector, texture=texture)
 
 
-def _add_horizontal_side(builder: UdmfBuilder, start_x: int, end_x: int, y: int, sector: int, openings: list[Opening]) -> None:
+def _add_horizontal_side(
+    builder: UdmfBuilder,
+    start_x: int,
+    end_x: int,
+    y: int,
+    sector: int,
+    openings: list[Opening],
+    texture: str,
+) -> None:
     for a, b in _split_axis(start_x, end_x, [(opening.start, opening.end) for opening in openings]):
-        builder.add_line((a, y), (b, y), sector)
+        builder.add_line((a, y), (b, y), sector, texture=texture)
 
 
 def _split_axis(start: int, end: int, openings: list[tuple[int, int]]) -> list[tuple[int, int]]:
@@ -370,7 +410,14 @@ def _split_axis(start: int, end: int, openings: list[tuple[int, int]]) -> list[t
     return segments
 
 
-def _add_connection(builder: UdmfBuilder, source: Rect, target: Rect, connection: dict[str, Any], door_tag: int) -> dict[str, int]:
+def _add_connection(
+    builder: UdmfBuilder,
+    source: Rect,
+    target: Rect,
+    connection: dict[str, Any],
+    door_tag: int,
+    materials: dict[str, str],
+) -> dict[str, int]:
     source_side, target_side = _connection_sides(source, target)
     sx, sy = _opening_center(source, source_side)
     tx, ty = _opening_center(target, target_side)
@@ -387,15 +434,15 @@ def _add_connection(builder: UdmfBuilder, source: Rect, target: Rect, connection
             door_x1 = (x_start + x_end - door_width) // 2
             door_x2 = door_x1 + door_width
             if door_x1 > x_start:
-                _add_corridor_rect(builder, (x_start, sy - 64, door_x1, sy + 64), floor)
+                _add_corridor_rect(builder, (x_start, sy - 64, door_x1, sy + 64), floor, materials)
                 corridors += 1
-            _add_door_rect(builder, (door_x1, sy - 64, door_x2, sy + 64), floor, door_tag, lock_color)
+            _add_door_rect(builder, (door_x1, sy - 64, door_x2, sy + 64), floor, door_tag, lock_color, materials)
             doors += 1
             if door_x2 < x_end:
-                _add_corridor_rect(builder, (door_x2, sy - 64, x_end, sy + 64), floor)
+                _add_corridor_rect(builder, (door_x2, sy - 64, x_end, sy + 64), floor, materials)
                 corridors += 1
         else:
-            _add_corridor_rect(builder, (x_start, sy - 64, x_end, sy + 64), floor)
+            _add_corridor_rect(builder, (x_start, sy - 64, x_end, sy + 64), floor, materials)
             corridors += 1
     elif source_side in {"top", "bottom"} and sx == tx:
         y_start, y_end = sorted((sy, ty))
@@ -404,34 +451,52 @@ def _add_connection(builder: UdmfBuilder, source: Rect, target: Rect, connection
             door_y1 = (y_start + y_end - door_height) // 2
             door_y2 = door_y1 + door_height
             if door_y1 > y_start:
-                _add_corridor_rect(builder, (sx - 64, y_start, sx + 64, door_y1), floor)
+                _add_corridor_rect(builder, (sx - 64, y_start, sx + 64, door_y1), floor, materials)
                 corridors += 1
-            _add_door_rect(builder, (sx - 64, door_y1, sx + 64, door_y2), floor, door_tag, lock_color)
+            _add_door_rect(builder, (sx - 64, door_y1, sx + 64, door_y2), floor, door_tag, lock_color, materials)
             doors += 1
             if door_y2 < y_end:
-                _add_corridor_rect(builder, (sx - 64, door_y2, sx + 64, y_end), floor)
+                _add_corridor_rect(builder, (sx - 64, door_y2, sx + 64, y_end), floor, materials)
                 corridors += 1
         else:
-            _add_corridor_rect(builder, (sx - 64, y_start, sx + 64, y_end), floor)
+            _add_corridor_rect(builder, (sx - 64, y_start, sx + 64, y_end), floor, materials)
             corridors += 1
     else:
         # L-shaped fallback for future less-regular room placement.
         mid = (tx, sy)
-        _add_corridor_rect(builder, _rect_between_points((sx, sy), mid), floor)
-        _add_corridor_rect(builder, _rect_between_points(mid, (tx, ty)), floor)
+        _add_corridor_rect(builder, _rect_between_points((sx, sy), mid), floor, materials)
+        _add_corridor_rect(builder, _rect_between_points(mid, (tx, ty)), floor, materials)
         corridors += 2
     return {"corridors": corridors, "doors": doors}
 
 
-def _add_corridor_rect(builder: UdmfBuilder, rect: Rect, floor: int) -> int:
-    sector = builder.add_sector(floor=floor, ceiling=floor + 128)
-    _add_plain_rect(builder, rect, sector)
+def _add_corridor_rect(builder: UdmfBuilder, rect: Rect, floor: int, materials: dict[str, str]) -> int:
+    sector = builder.add_sector(
+        floor=floor,
+        ceiling=floor + 128,
+        texturefloor=materials["floor"],
+        textureceiling=materials["ceiling"],
+    )
+    _add_plain_rect(builder, rect, sector, texture=materials["wall"])
     return sector
 
 
-def _add_door_rect(builder: UdmfBuilder, rect: Rect, floor: int, tag: int, lock_color: str | None) -> int:
-    sector = builder.add_sector(floor=floor, ceiling=floor, tag=tag)
-    _add_plain_rect(builder, rect, sector)
+def _add_door_rect(
+    builder: UdmfBuilder,
+    rect: Rect,
+    floor: int,
+    tag: int,
+    lock_color: str | None,
+    materials: dict[str, str],
+) -> int:
+    sector = builder.add_sector(
+        floor=floor,
+        ceiling=floor,
+        texturefloor=materials["floor"],
+        textureceiling=materials["ceiling"],
+        tag=tag,
+    )
+    _add_plain_rect(builder, rect, sector, texture=materials["door_track"])
     special = {
         "special": 12,
         "playeruse": True,
@@ -458,7 +523,7 @@ def _add_door_rect(builder: UdmfBuilder, rect: Rect, floor: int, tag: int, lock_
     return sector
 
 
-def _add_plain_rect(builder: UdmfBuilder, rect: Rect, sector: int) -> None:
+def _add_plain_rect(builder: UdmfBuilder, rect: Rect, sector: int, *, texture: str = WALL_TEXTURE) -> None:
     x1, y1, x2, y2 = rect
     # Doom renders a one-sided line's front sidedef on the right side of
     # the linedef. Emit rectangles clockwise so their visible wall faces point
@@ -466,10 +531,16 @@ def _add_plain_rect(builder: UdmfBuilder, rect: Rect, sector: int) -> None:
     # inside the map.
     corners = [(x1, y1), (x1, y2), (x2, y2), (x2, y1)]
     for a, b in zip(corners, corners[1:] + corners[:1], strict=True):
-        builder.add_line(a, b, sector)
+        builder.add_line(a, b, sector, texture=texture)
 
 
-def _add_height_features(builder: UdmfBuilder, space: dict[str, Any], rect: Rect, parent_sector: int) -> int:
+def _add_height_features(
+    builder: UdmfBuilder,
+    space: dict[str, Any],
+    rect: Rect,
+    parent_sector: int,
+    materials: dict[str, str],
+) -> int:
     features = space.get("height_topology", {}).get("features", [])
     if not isinstance(features, list):
         return 0
@@ -486,16 +557,28 @@ def _add_height_features(builder: UdmfBuilder, space: dict[str, Any], rect: Rect
                 sector = builder.add_sector(
                     floor=int(feature.get("floor_height", ceiling)),
                     ceiling=int(feature.get("ceiling_height", ceiling)),
+                    texturefloor=materials["floor"],
+                    textureceiling=materials["ceiling"],
                 )
-                builder.add_inner_rect(pillar_rect, sector, parent_sector)
+                builder.add_inner_rect(pillar_rect, sector, parent_sector, texture=materials["lower_wall"])
                 count += 1
         elif feature_type in {"raised_platform", "platform"}:
-            sector = builder.add_sector(floor=int(feature.get("floor_height", base + 32)), ceiling=ceiling)
-            builder.add_inner_rect(_feature_rect(rect, "north", index), sector, parent_sector)
+            sector = builder.add_sector(
+                floor=int(feature.get("floor_height", base + 32)),
+                ceiling=ceiling,
+                texturefloor=materials["floor"],
+                textureceiling=materials["ceiling"],
+            )
+            builder.add_inner_rect(_feature_rect(rect, "north", index), sector, parent_sector, texture=materials["lower_wall"])
             count += 1
         elif feature_type in {"shallow_pit", "pit"}:
-            sector = builder.add_sector(floor=int(feature.get("floor_height", base - 24)), ceiling=ceiling)
-            builder.add_inner_rect(_feature_rect(rect, "south", index), sector, parent_sector)
+            sector = builder.add_sector(
+                floor=int(feature.get("floor_height", base - 24)),
+                ceiling=ceiling,
+                texturefloor=materials["floor"],
+                textureceiling=materials["ceiling"],
+            )
+            builder.add_inner_rect(_feature_rect(rect, "south", index), sector, parent_sector, texture=materials["lower_wall"])
             count += 1
     return count
 
