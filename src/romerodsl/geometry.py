@@ -458,7 +458,11 @@ def _add_door_rect(builder: UdmfBuilder, rect: Rect, floor: int, tag: int, lock_
 
 def _add_plain_rect(builder: UdmfBuilder, rect: Rect, sector: int) -> None:
     x1, y1, x2, y2 = rect
-    corners = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+    # Doom renders a one-sided line's front sidedef on the right side of
+    # the linedef. Emit rectangles clockwise so their visible wall faces point
+    # inward; otherwise corridor/door side walls show as hall-of-mirrors from
+    # inside the map.
+    corners = [(x1, y1), (x1, y2), (x2, y2), (x2, y1)]
     for a, b in zip(corners, corners[1:] + corners[:1], strict=True):
         builder.add_line(a, b, sector)
 

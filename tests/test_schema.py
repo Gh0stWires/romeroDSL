@@ -4,9 +4,10 @@ import json
 import unittest
 from pathlib import Path
 
-from romerodsl.compiler import compile_to_layout, compile_to_plan, compile_to_wad
+from romerodsl.compiler import _place_rooms, compile_to_layout, compile_to_plan, compile_to_wad
+from romerodsl.geometry import build_geometry_textmap
 from romerodsl.schema import validate_document
-from romerodsl.wad import validate_wad
+from romerodsl.wad import _parse_textmap, validate_wad
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "blue_lock_processing.json"
 
@@ -96,6 +97,52 @@ class SchemaTests(unittest.TestCase):
         self.assertIn(-24, report["floor_height_levels"])
         self.assertIn(32, report["floor_height_levels"])
         self.assertIn(192, report["floor_height_levels"])
+
+    def test_one_sided_linedefs_face_their_own_sector(self) -> None:
+        document = load_example()
+        room_boxes = _place_rooms(document["spaces"], document["progression"], document["connections"])
+        textmap, _stats = build_geometry_textmap(document, room_boxes)
+        groups = _parse_textmap(textmap)
+
+        vertices = groups["vertex"]
+        sidedefs = groups["sidedef"]
+        linedefs = groups["linedef"]
+        sector_points: dict[int, list[tuple[int, int]]] = {index: [] for index, _sector in enumerate(groups["sector"])}
+        for line in linedefs:
+            for side_key in ("sidefront", "sideback"):
+                side_id = line.get(side_key, -1)
+                if side_id < 0:
+                    continue
+                sector_id = sidedefs[side_id]["sector"]
+                sector_points[sector_id].append((vertices[line["v1"]]["x"], vertices[line["v1"]]["y"]))
+                sector_points[sector_id].append((vertices[line["v2"]]["x"], vertices[line["v2"]]["y"]))
+        centroids = {
+            sector_id: (
+                sum(x for x, _y in points) / len(points),
+                sum(y for _x, y in points) / len(points),
+            )
+            for sector_id, points in sector_points.items()
+            if points
+        }
+
+        wrong_facing = []
+        for index, line in enumerate(linedefs):
+            if line.get("sideback", -1) >= 0:
+                continue
+            sector_id = sidedefs[line["sidefront"]]["sector"]
+            centroid_x, centroid_y = centroids[sector_id]
+            v1 = vertices[line["v1"]]
+            v2 = vertices[line["v2"]]
+            dx = v2["x"] - v1["x"]
+            dy = v2["y"] - v1["y"]
+            px = centroid_x - v1["x"]
+            py = centroid_y - v1["y"]
+            cross = dx * py - dy * px
+            # Doom renders the front sidedef on the right side of a linedef.
+            if cross >= 0:
+                wrong_facing.append(index)
+
+        self.assertEqual(wrong_facing, [])
 
 
 if __name__ == "__main__":
