@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from romerodsl.compiler import _place_rooms, compile_to_layout, compile_to_plan, compile_to_wad
-from romerodsl.geometry import build_geometry_textmap
+from romerodsl.geometry import _box_to_rect, _pillar_rects, build_geometry_textmap
 from romerodsl.schema import validate_document
 from romerodsl.wad import _parse_textmap, validate_wad
 
@@ -102,7 +102,7 @@ class SchemaTests(unittest.TestCase):
 
         self.assertTrue(output.exists())
         self.assertTrue(report["valid"])
-        self.assertEqual(report["geometry_profile"], "sector_primitives_v0.4")
+        self.assertEqual(report["geometry_profile"], "sector_primitives_v0.5")
         self.assertEqual(reread["player_starts"], 1)
         self.assertEqual(reread["keys"], 1)
         self.assertEqual(reread["exits"], 1)
@@ -265,6 +265,37 @@ class SchemaTests(unittest.TestCase):
                         crossings.append((left, right, x3, y1))
 
         self.assertEqual(crossings, [])
+
+    def test_thing_placement_avoids_blocking_height_features(self) -> None:
+        document = load_example()
+        start_room = document["spaces"][0]
+        start_room["height_topology"] = {
+            "features": [
+                {
+                    "id": "start_room_blockers",
+                    "type": "pillar_cluster",
+                    "count": 5,
+                    "floor_height": 128,
+                    "ceiling_height": 128,
+                    "blocks_movement": True,
+                }
+            ]
+        }
+        start_room["things"]["items"] = ["shotgun"] + ["shells_small"] * 24
+
+        room_boxes = _place_rooms(document["spaces"], document["progression"], document["connections"])
+        textmap, _stats = build_geometry_textmap(document, room_boxes)
+        groups = _parse_textmap(textmap)
+        start_rect = _box_to_rect(room_boxes["start_room"], 128)
+        blockers = _pillar_rects(start_rect, 5)
+
+        blocked_things = []
+        for thing in groups["thing"]:
+            point = (thing["x"], thing["y"])
+            if any(x1 <= point[0] <= x2 and y1 <= point[1] <= y2 for x1, y1, x2, y2 in blockers):
+                blocked_things.append((thing["type"], point))
+
+        self.assertEqual(blocked_things, [])
 
 
 if __name__ == "__main__":

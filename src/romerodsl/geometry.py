@@ -1,9 +1,9 @@
 """Sector-primitive geometry compiler for romeroDSL.
 
-This is the v0.3 path: it keeps the high-level DSL as the source of truth, but
-exports cleaner UDMF than the debug cell-grid writer. Rooms become main sectors,
-connections become corridor/door sectors, and intra-room height features become
-subsectors inside the room.
+This path keeps the high-level DSL as the source of truth, but exports cleaner
+UDMF than the debug cell-grid writer. Rooms become main sectors, connections
+become corridor/door sectors, and intra-room height features become subsectors
+inside the room.
 """
 
 from __future__ import annotations
@@ -253,7 +253,7 @@ def write_geometry_wad(
         {
             "source_title": document.get("title"),
             "cell_size": cell_size,
-            "geometry_profile": "sector_primitives_v0.4",
+            "geometry_profile": "sector_primitives_v0.5",
             "room_sectors": stats.room_sectors,
             "corridor_sectors": stats.corridor_sectors,
             "door_sectors": stats.door_sectors,
@@ -652,10 +652,11 @@ def _feature_rect(rect: Rect, placement: str, index: int) -> Rect:
 
 
 def _add_progression_things(builder: UdmfBuilder, document: dict[str, Any], rects: dict[str, Rect], stats: GeometryStats) -> None:
+    spaces = {space["id"]: space for space in document["spaces"]}
     start_room = str(document["progression"].get("start"))
     exit_room = str(document["progression"].get("exit"))
     if start_room in rects:
-        x, y = _center(rects[start_room])
+        x, y = _safe_room_point(rects[start_room], 0, _blocking_feature_rects(spaces[start_room], rects[start_room]))
         builder.add_thing(x, y, "player_start")
         _count_thing(stats, "player_start")
     for key in document["progression"].get("keys", []):
@@ -663,7 +664,7 @@ def _add_progression_things(builder: UdmfBuilder, document: dict[str, Any], rect
             continue
         location = str(key.get("location"))
         if location in rects:
-            x, y = _safe_room_point(rects[location], 0)
+            x, y = _safe_room_point(rects[location], 0, _blocking_feature_rects(spaces[location], rects[location]))
             builder.add_thing(x, y, "key", color=str(key.get("color", "blue")))
             _count_thing(stats, "key")
     if exit_room in rects:
@@ -674,17 +675,18 @@ def _add_progression_things(builder: UdmfBuilder, document: dict[str, Any], rect
 def _add_space_things(builder: UdmfBuilder, document: dict[str, Any], rects: dict[str, Rect], stats: GeometryStats) -> None:
     for space in document["spaces"]:
         rect = rects[space["id"]]
+        blocked_rects = _blocking_feature_rects(space, rect)
         offset = 1
         for item in _extract_items(space):
             kind = _item_kind(item)
             if kind:
-                x, y = _safe_room_point(rect, offset)
+                x, y = _safe_room_point(rect, offset, blocked_rects)
                 builder.add_thing(x, y, kind)
                 _count_thing(stats, kind)
                 offset += 1
         for _name, monster_count in _extract_monsters(space):
             for _ in range(min(monster_count, 8)):
-                x, y = _safe_room_point(rect, offset)
+                x, y = _safe_room_point(rect, offset, blocked_rects)
                 builder.add_thing(x, y, "monster")
                 _count_thing(stats, "monster")
                 offset += 1
@@ -751,14 +753,55 @@ def _count_thing(stats: GeometryStats, kind: str) -> None:
     stats.things_by_kind[kind] = stats.things_by_kind.get(kind, 0) + 1
 
 
-def _safe_room_point(rect: Rect, offset: int) -> Point:
+def _safe_room_point(rect: Rect, offset: int, blocked_rects: list[Rect] | None = None) -> Point:
+    candidates = _room_point_candidates(rect)
+    if not candidates:
+        return _center(rect)
+    if not blocked_rects:
+        return candidates[offset % len(candidates)]
+    for shift in range(len(candidates)):
+        point = candidates[(offset + shift) % len(candidates)]
+        if not _point_in_any_rect(point, blocked_rects):
+            return point
+    return candidates[offset % len(candidates)]
+
+
+def _room_point_candidates(rect: Rect) -> list[Point]:
     x1, y1, x2, y2 = rect
     cols = max(1, (x2 - x1 - 256) // 96)
-    col = offset % cols
-    row = offset // cols
-    x = min(x2 - 128, x1 + 128 + col * 96)
-    y = min(y2 - 128, y1 + 128 + row * 96)
-    return x, y
+    rows = max(1, (y2 - y1 - 256) // 96)
+    return [
+        (min(x2 - 128, x1 + 128 + col * 96), min(y2 - 128, y1 + 128 + row * 96))
+        for row in range(rows)
+        for col in range(cols)
+    ]
+
+
+def _blocking_feature_rects(space: dict[str, Any], rect: Rect) -> list[Rect]:
+    features = space.get("height_topology", {}).get("features", [])
+    if not isinstance(features, list):
+        return []
+    blocked: list[Rect] = []
+    for index, feature in enumerate(features):
+        if not isinstance(feature, dict):
+            continue
+        feature_type = feature.get("type")
+        if feature_type in {"ceiling_pillar_cluster", "pillar", "pillar_cluster"}:
+            floor = int(feature.get("floor_height", space.get("ceiling_height", 128)))
+            ceiling = int(feature.get("ceiling_height", space.get("ceiling_height", 128)))
+            if bool(feature.get("blocks_movement", floor >= ceiling)):
+                blocked.extend(_pillar_rects(rect, int(feature.get("count", 1))))
+        elif bool(feature.get("blocks_movement", False)):
+            if feature_type in {"raised_platform", "platform"}:
+                blocked.append(_feature_rect(rect, "north", index))
+            elif feature_type in {"shallow_pit", "pit"}:
+                blocked.append(_feature_rect(rect, "south", index))
+    return blocked
+
+
+def _point_in_any_rect(point: Point, rects: list[Rect]) -> bool:
+    x, y = point
+    return any(x1 <= x <= x2 and y1 <= y <= y2 for x1, y1, x2, y2 in rects)
 
 
 def _box_to_rect(box: dict[str, int], cell_size: int) -> Rect:
