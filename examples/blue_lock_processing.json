@@ -1,0 +1,279 @@
+{
+  "dsl_version": "0.1",
+  "game": "doom2",
+  "format_target": "udmf",
+  "title": "Blue Lock Processing",
+  "scale": "medium",
+  "difficulty": "medium",
+  "intended_playtime": "short",
+  "compatibility": {
+    "jump_required": false,
+    "crouch_required": false,
+    "freelook_required": false
+  },
+  "design_intent": {
+    "summary": "A compact techbase with a central combat hub, a blue-key side route, and a blue-locked exit wing.",
+    "topology": "hub_with_key_branch",
+    "progression_style": "required_blue_key_lock",
+    "combat_style": "readable_pressure",
+    "exploration_style": "one_optional_secret"
+  },
+  "theme": {
+    "primary": "techbase",
+    "secondary": "industrial",
+    "mood": "tense",
+    "texture_palette": {
+      "walls": ["STARTAN", "METAL", "SUPPORT"],
+      "floors": ["FLOOR0_1", "FLAT20"],
+      "ceilings": ["CEIL3_5"],
+      "doors": ["BIGDOOR2"]
+    },
+    "lighting": {
+      "base": "medium",
+      "contrast": "high",
+      "landmarks": [
+        "blue_key_room_has_cool_light",
+        "exit_wing_has_warning_lights"
+      ]
+    }
+  },
+  "progression": {
+    "start": "start_room",
+    "exit": "exit_room",
+    "critical_path": [
+      "start_room",
+      "entry_corridor",
+      "central_hub",
+      "blue_key_room",
+      "central_hub",
+      "blue_locked_door",
+      "exit_wing",
+      "exit_room"
+    ],
+    "keys": [
+      {
+        "color": "blue",
+        "location": "blue_key_room",
+        "reachable_before": ["blue_locked_door"]
+      }
+    ],
+    "gates": [
+      {
+        "id": "blue_locked_door",
+        "type": "locked_door",
+        "key": "blue",
+        "blocks": "central_hub -> exit_wing",
+        "required_for_exit": true
+      }
+    ]
+  },
+  "spaces": [
+    {
+      "id": "start_room",
+      "role": "player_start",
+      "size": "small",
+      "shape": "rectangle",
+      "floor_height": 0,
+      "ceiling_height": 128,
+      "mood": "safe_intro",
+      "things": {
+        "player_start": true,
+        "items": ["shotgun", "shells_small"]
+      }
+    },
+    {
+      "id": "entry_corridor",
+      "role": "connector",
+      "size": "small",
+      "shape": "bent_corridor",
+      "floor_height": 0,
+      "ceiling_height": 128,
+      "mood": "controlled_intro",
+      "encounter": {
+        "intensity": "low",
+        "monsters": [
+          {"zombieman": 3}
+        ]
+      }
+    },
+    {
+      "id": "central_hub",
+      "role": "combat_hub",
+      "size": "large",
+      "shape": "irregular_octagonal",
+      "floor_height": 0,
+      "ceiling_height": 192,
+      "height_topology": {
+        "base_floor": 0,
+        "ceiling": 192,
+        "features": [
+          {
+            "id": "hub_pillars",
+            "type": "ceiling_pillar_cluster",
+            "count": 4,
+            "placement": "central",
+            "floor_height": 192,
+            "ceiling_height": 192,
+            "blocks_movement": true,
+            "blocks_line_of_sight": true
+          },
+          {
+            "id": "north_platform",
+            "type": "raised_platform",
+            "placement": "north_wall",
+            "floor_height": 32,
+            "access": "stairs",
+            "purpose": "monster_overlook"
+          },
+          {
+            "id": "south_pit",
+            "type": "shallow_pit",
+            "placement": "south_side",
+            "floor_height": -24,
+            "escape": "stairs"
+          }
+        ]
+      },
+      "encounter": {
+        "intensity": "medium",
+        "monsters": [
+          {"imp": 6},
+          {"shotgun_guy": 2}
+        ],
+        "cover": ["hub_pillars", "north_platform"],
+        "resources": {
+          "ammo": "moderate",
+          "health": "light"
+        }
+      }
+    },
+    {
+      "id": "blue_key_room",
+      "role": "key_room",
+      "size": "medium",
+      "shape": "rectangle_with_side_alcoves",
+      "floor_height": -16,
+      "ceiling_height": 144,
+      "contains": {
+        "key": "blue"
+      },
+      "encounter": {
+        "trigger": "player_takes_blue_key",
+        "intensity": "medium",
+        "monsters": [
+          {"demon": 2},
+          {"imp": 3}
+        ]
+      },
+      "resources": {
+        "health": "moderate"
+      }
+    },
+    {
+      "id": "exit_wing",
+      "role": "final_connector",
+      "size": "medium",
+      "shape": "narrow_hall_with_cover",
+      "floor_height": 0,
+      "ceiling_height": 128,
+      "encounter": {
+        "intensity": "low",
+        "monsters": [
+          {"imp": 2}
+        ]
+      }
+    },
+    {
+      "id": "exit_room",
+      "role": "exit",
+      "size": "small",
+      "shape": "rectangle",
+      "floor_height": 0,
+      "ceiling_height": 128,
+      "contains": {
+        "exit_switch": true
+      }
+    },
+    {
+      "id": "armor_secret",
+      "role": "secret_reward",
+      "size": "small",
+      "shape": "closet",
+      "floor_height": 0,
+      "ceiling_height": 128,
+      "secret": true,
+      "contains": {
+        "items": ["green_armor", "shells_small"]
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": "start_room",
+      "to": "entry_corridor",
+      "type": "doorway",
+      "width": "normal",
+      "locked": false
+    },
+    {
+      "from": "entry_corridor",
+      "to": "central_hub",
+      "type": "door",
+      "door_style": "normal",
+      "locked": false,
+      "bidirectional": true
+    },
+    {
+      "from": "central_hub",
+      "to": "blue_key_room",
+      "type": "stairs",
+      "height_change": -16,
+      "locked": false
+    },
+    {
+      "id": "blue_locked_door",
+      "from": "central_hub",
+      "to": "exit_wing",
+      "type": "locked_door",
+      "key": "blue",
+      "width": "normal",
+      "bidirectional": true,
+      "required_for_exit": true
+    },
+    {
+      "from": "exit_wing",
+      "to": "exit_room",
+      "type": "hallway",
+      "locked": false
+    },
+    {
+      "from": "entry_corridor",
+      "to": "armor_secret",
+      "type": "hidden_wall",
+      "secret": true,
+      "required_for_exit": false
+    }
+  ],
+  "validation": {
+    "required": [
+      "exactly_one_player_start",
+      "exactly_one_exit",
+      "start_can_reach_exit",
+      "blue_key_reachable_before_blue_locked_door",
+      "exit_requires_blue_locked_door",
+      "locked_doors_are_partition_edges",
+      "all_required_spaces_connected",
+      "all_doors_bidirectional_unless_marked",
+      "all_height_transitions_have_valid_textures",
+      "monsters_have_walkable_positions",
+      "no_required_progression_inside_secret"
+    ],
+    "reject_if": [
+      "compiler_invents_missing_required_key",
+      "compiler_invents_missing_required_lock",
+      "exit_reachable_without_blue_key",
+      "locked_door_is_decorative",
+      "required_room_disconnected"
+    ]
+  }
+}

@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+
+# Local/editor files
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+.DS_Store
+
+# Generated Doom artifacts
+outputs/
+*.wad
+*.pk3
+*.pk7
