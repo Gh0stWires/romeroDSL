@@ -247,6 +247,7 @@ class UdmfBuilder:
         )
 
     def textmap(self) -> str:
+        self._compact_sidedefs()
         groups = {
             "vertex": self.vertices,
             "sector": self.sectors,
@@ -291,6 +292,24 @@ class UdmfBuilder:
                 self.sidedefs[side_id]["texturemiddle"] = "-"
                 self.sidedefs[side_id]["texturebottom"] = DOOR_TEXTURE
                 self.sidedefs[side_id]["texturetop"] = DOOR_TEXTURE
+
+    def _compact_sidedefs(self) -> None:
+        used_ids: list[int] = []
+        seen: set[int] = set()
+        for line in self.linedefs:
+            for side_key in ("sidefront", "sideback"):
+                side_id = line.get(side_key, -1)
+                if side_id >= 0 and side_id not in seen:
+                    used_ids.append(side_id)
+                    seen.add(side_id)
+        remap = {old_id: new_id for new_id, old_id in enumerate(used_ids)}
+        if len(remap) == len(self.sidedefs):
+            return
+        self.sidedefs = [self.sidedefs[old_id] for old_id in used_ids]
+        for line in self.linedefs:
+            line["sidefront"] = remap[line["sidefront"]]
+            if line.get("sideback", -1) >= 0:
+                line["sideback"] = remap[line["sideback"]]
 
 
 def write_geometry_wad(

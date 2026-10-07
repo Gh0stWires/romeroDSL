@@ -109,6 +109,8 @@ class SchemaTests(unittest.TestCase):
         self.assertGreaterEqual(reread["locked_doors"], 1)
         self.assertGreaterEqual(reread["bidirectional_door_linedefs"], reread["locked_door_linedefs"])
         self.assertGreaterEqual(reread["closed_door_sectors"], 1)
+        self.assertEqual(reread["invalid_side_references"], [])
+        self.assertEqual(reread["unreferenced_sidedefs"], [])
         self.assertEqual(reread["missing_visible_textures"], 0)
         self.assertEqual(reread["unknown_flats"], [])
         self.assertEqual(reread["unknown_textures"], [])
@@ -265,6 +267,30 @@ class SchemaTests(unittest.TestCase):
                         crossings.append((left, right, x3, y1))
 
         self.assertEqual(crossings, [])
+
+    def test_exported_linedefs_reference_valid_used_sidedefs(self) -> None:
+        document = load_example()
+        room_boxes = _place_rooms(document["spaces"], document["progression"], document["connections"])
+        textmap, _stats = build_geometry_textmap(document, room_boxes)
+        groups = _parse_textmap(textmap)
+
+        sidedefs = groups["sidedef"]
+        invalid_refs = []
+        used_sidedefs = set()
+        for line_index, line in enumerate(groups["linedef"]):
+            for side_key in ("sidefront", "sideback"):
+                side_id = line.get(side_key, -1)
+                if side_key == "sideback" and side_id < 0:
+                    continue
+                if not 0 <= side_id < len(sidedefs):
+                    invalid_refs.append((line_index, side_key, side_id))
+                    continue
+                used_sidedefs.add(side_id)
+
+        unreferenced_sidedefs = sorted(set(range(len(sidedefs))) - used_sidedefs)
+
+        self.assertEqual(invalid_refs, [])
+        self.assertEqual(unreferenced_sidedefs, [])
 
     def test_irregular_octagonal_rooms_emit_diagonal_linedefs(self) -> None:
         document = load_example()

@@ -324,9 +324,20 @@ def validate_wad(path: Path) -> dict[str, Any]:
     things = groups["thing"]
     if not sectors or not linedefs:
         raise ValueError("missing geometry")
-    for line in linedefs:
-        if line["sidefront"] >= len(sidedefs) or line["sideback"] >= len(sidedefs):
+    referenced_sidedefs: set[int] = set()
+    invalid_side_references = []
+    for index, line in enumerate(linedefs):
+        for side_key in ("sidefront", "sideback"):
+            side_id = line.get(side_key, -1)
+            if side_key == "sideback" and side_id < 0:
+                continue
+            if not 0 <= side_id < len(sidedefs):
+                invalid_side_references.append({"linedef": index, "side": side_key, "sidedef": side_id})
+                continue
+            referenced_sidedefs.add(side_id)
+    if invalid_side_references:
             raise ValueError("linedef references invalid sidedef")
+    unreferenced_sidedefs = sorted(set(range(len(sidedefs))) - referenced_sidedefs)
     door_lines = [line for line in linedefs if line.get("special") == 12]
     door_tags = {line.get("arg0") for line in door_lines if line.get("arg0", 0) > 0}
     locked_door_tags = {
@@ -356,6 +367,8 @@ def validate_wad(path: Path) -> dict[str, Any]:
         "vertices": len(groups["vertex"]),
         "linedefs": len(linedefs),
         "sidedefs": len(sidedefs),
+        "invalid_side_references": invalid_side_references,
+        "unreferenced_sidedefs": unreferenced_sidedefs,
         "things": len(things),
         "player_starts": sum(thing["type"] == 1 for thing in things),
         "keys": sum(thing["type"] in {5, 6, 13, 38, 39, 40} for thing in things),
