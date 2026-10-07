@@ -170,6 +170,62 @@ class UdmfBuilder:
             self.linedefs.append(line)
             self._apply_two_sided_textures(len(self.linedefs) - 1)
 
+    def add_inner_rect_cluster(self, rects: list[tuple[Rect, int]], parent_sector: int, *, texture: str = WALL_TEXTURE) -> None:
+        """Emit touching inner sectors while assigning shared edges to both feature sectors.
+
+        Isolated inner rectangles use parent-sector backs on every edge. Stair
+        strips need adjacent feature sectors to share a real two-sided linedef;
+        otherwise duplicated parent-backed edges can create odd visual seams and
+        movement artifacts.
+        """
+
+        local_edges: dict[tuple[int, int], int] = {}
+        for rect, sector in rects:
+            x1, y1, x2, y2 = rect
+            corners = [(x1, y1), (x1, y2), (x2, y2), (x2, y1)]
+            for a, b in zip(corners, corners[1:] + corners[:1], strict=True):
+                front_side = len(self.sidedefs)
+                self.sidedefs.append(
+                    {
+                        "sector": sector,
+                        "texturemiddle": "-",
+                        "texturebottom": texture,
+                        "texturetop": texture,
+                    }
+                )
+                va = self._vertex(a)
+                vb = self._vertex(b)
+                edge = (min(va, vb), max(va, vb))
+                if edge in local_edges:
+                    line_id = local_edges[edge]
+                    line = self.linedefs[line_id]
+                    line.update(sideback=front_side, twosided=True, blocking=False)
+                    self._apply_two_sided_textures(line_id)
+                    continue
+
+                back_side = len(self.sidedefs)
+                self.sidedefs.append(
+                    {
+                        "sector": parent_sector,
+                        "texturemiddle": "-",
+                        "texturebottom": texture,
+                        "texturetop": texture,
+                    }
+                )
+                line_id = len(self.linedefs)
+                local_edges[edge] = line_id
+                self.linedefs.append(
+                    {
+                        "v1": va,
+                        "v2": vb,
+                        "sidefront": front_side,
+                        "sideback": back_side,
+                        "blocking": False,
+                        "twosided": True,
+                    }
+                )
+                self._apply_two_sided_textures(line_id)
+
     def add_thing(self, x: int, y: int, kind: str, *, color: str | None = None) -> None:
         thing_type = KEY_COLOR_THING_TYPES[color or "blue"] if kind == "key" else THING_TYPES[kind]
         self.things.append(
@@ -288,7 +344,14 @@ def build_geometry_textmap(
             textureceiling=materials["ceiling"],
         )
         room_sector_ids[space_id] = sector_id
-        _add_room_boundary(builder, rects[space_id], sector_id, openings.get(space_id, []), materials)
+        _add_room_boundary(
+            builder,
+            rects[space_id],
+            sector_id,
+            openings.get(space_id, []),
+            materials,
+            shape=str(space.get("shape", "rectangle")),
+        )
         stats.room_sectors += 1
 
     door_tag = 100
@@ -405,9 +468,22 @@ def _add_room_boundary(
     sector: int,
     openings: list[Opening],
     materials: dict[str, str],
+    *,
+    shape: str = "rectangle",
 ) -> None:
     x1, y1, x2, y2 = rect
     by_side = {side: [opening for opening in openings if opening.side == side] for side in ("left", "right", "top", "bottom")}
+    if shape in {"irregular_octagonal", "octagonal", "chamfered_rectangle"}:
+        chamfer = min(160, max(96, min(x2 - x1, y2 - y1) // 5))
+        _add_vertical_side(builder, x1, y1 + chamfer, y2 - chamfer, sector, by_side["left"], materials["wall"])
+        builder.add_line((x1, y2 - chamfer), (x1 + chamfer, y2), sector, texture=materials["wall"])
+        _add_horizontal_side(builder, x1 + chamfer, x2 - chamfer, y2, sector, by_side["top"], materials["wall"])
+        builder.add_line((x2 - chamfer, y2), (x2, y2 - chamfer), sector, texture=materials["wall"])
+        _add_vertical_side(builder, x2, y2 - chamfer, y1 + chamfer, sector, by_side["right"], materials["wall"])
+        builder.add_line((x2, y1 + chamfer), (x2 - chamfer, y1), sector, texture=materials["wall"])
+        _add_horizontal_side(builder, x2 - chamfer, x1 + chamfer, y1, sector, by_side["bottom"], materials["wall"])
+        builder.add_line((x1 + chamfer, y1), (x1, y1 + chamfer), sector, texture=materials["wall"])
+        return
     _add_vertical_side(builder, x1, y1, y2, sector, by_side["left"], materials["wall"])
     _add_horizontal_side(builder, x1, x2, y2, sector, by_side["bottom"], materials["wall"])
     _add_vertical_side(builder, x2, y2, y1, sector, by_side["right"], materials["wall"])
@@ -608,24 +684,89 @@ def _add_height_features(
                 builder.add_inner_rect(pillar_rect, sector, parent_sector, texture=materials["lower_wall"])
                 count += 1
         elif feature_type in {"raised_platform", "platform"}:
-            sector = builder.add_sector(
-                floor=int(feature.get("floor_height", base + 32)),
-                ceiling=ceiling,
-                texturefloor=materials["floor"],
-                textureceiling=materials["ceiling"],
-            )
-            builder.add_inner_rect(_feature_rect(rect, "north", index), sector, parent_sector, texture=materials["lower_wall"])
-            count += 1
+            platform_floor = int(feature.get("floor_height", base + 32))
+            feature_rect = _feature_rect(rect, "north", index)
+            if feature.get("access") == "stairs":
+                count += _add_stair_feature(
+                    builder,
+                    feature_rect,
+                    parent_sector,
+                    base,
+                    platform_floor,
+                    ceiling,
+                    "south_to_north",
+                    materials,
+                )
+            else:
+                sector = builder.add_sector(
+                    floor=platform_floor,
+                    ceiling=ceiling,
+                    texturefloor=materials["floor"],
+                    textureceiling=materials["ceiling"],
+                )
+                builder.add_inner_rect(feature_rect, sector, parent_sector, texture=materials["lower_wall"])
+                count += 1
         elif feature_type in {"shallow_pit", "pit"}:
-            sector = builder.add_sector(
-                floor=int(feature.get("floor_height", base - 24)),
-                ceiling=ceiling,
-                texturefloor=materials["floor"],
-                textureceiling=materials["ceiling"],
-            )
-            builder.add_inner_rect(_feature_rect(rect, "south", index), sector, parent_sector, texture=materials["lower_wall"])
-            count += 1
+            pit_floor = int(feature.get("floor_height", base - 24))
+            feature_rect = _feature_rect(rect, "south", index)
+            if feature.get("escape") == "stairs":
+                count += _add_stair_feature(
+                    builder,
+                    feature_rect,
+                    parent_sector,
+                    base,
+                    pit_floor,
+                    ceiling,
+                    "north_to_south",
+                    materials,
+                )
+            else:
+                sector = builder.add_sector(
+                    floor=pit_floor,
+                    ceiling=ceiling,
+                    texturefloor=materials["floor"],
+                    textureceiling=materials["ceiling"],
+                )
+                builder.add_inner_rect(feature_rect, sector, parent_sector, texture=materials["lower_wall"])
+                count += 1
     return count
+
+
+def _add_stair_feature(
+    builder: UdmfBuilder,
+    feature_rect: Rect,
+    parent_sector: int,
+    base_floor: int,
+    target_floor: int,
+    ceiling: int,
+    direction: Literal["south_to_north", "north_to_south"],
+    materials: dict[str, str],
+) -> int:
+    x1, y1, x2, y2 = feature_rect
+    stair_depth = min(96, max(64, (y2 - y1) // 2))
+    step_floor = base_floor + ((target_floor - base_floor) // 2)
+    if direction == "south_to_north":
+        step_rect = (x1, y1 - stair_depth, x2, y1)
+    else:
+        step_rect = (x1, y2, x2, y2 + stair_depth)
+    step_sector = builder.add_sector(
+        floor=step_floor,
+        ceiling=ceiling,
+        texturefloor=materials["floor"],
+        textureceiling=materials["ceiling"],
+    )
+    feature_sector = builder.add_sector(
+        floor=target_floor,
+        ceiling=ceiling,
+        texturefloor=materials["floor"],
+        textureceiling=materials["ceiling"],
+    )
+    builder.add_inner_rect_cluster(
+        [(step_rect, step_sector), (feature_rect, feature_sector)],
+        parent_sector,
+        texture=materials["lower_wall"],
+    )
+    return 2
 
 
 def _pillar_rects(rect: Rect, count: int) -> list[Rect]:

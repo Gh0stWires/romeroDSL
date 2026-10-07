@@ -120,7 +120,7 @@ class SchemaTests(unittest.TestCase):
 
         self.assertEqual(report["room_sectors"], 7)
         self.assertEqual(report["door_sectors"], 2)
-        self.assertEqual(report["height_feature_sectors"], 6)
+        self.assertEqual(report["height_feature_sectors"], 8)
         self.assertLess(report["sectors"], 60)
         self.assertIn(-24, report["floor_height_levels"])
         self.assertIn(32, report["floor_height_levels"])
@@ -265,6 +265,64 @@ class SchemaTests(unittest.TestCase):
                         crossings.append((left, right, x3, y1))
 
         self.assertEqual(crossings, [])
+
+    def test_irregular_octagonal_rooms_emit_diagonal_linedefs(self) -> None:
+        document = load_example()
+        room_boxes = _place_rooms(document["spaces"], document["progression"], document["connections"])
+        textmap, _stats = build_geometry_textmap(document, room_boxes)
+        groups = _parse_textmap(textmap)
+
+        vertices = groups["vertex"]
+        diagonal_linedefs = []
+        for index, line in enumerate(groups["linedef"]):
+            v1 = vertices[line["v1"]]
+            v2 = vertices[line["v2"]]
+            if v1["x"] != v2["x"] and v1["y"] != v2["y"]:
+                diagonal_linedefs.append(index)
+
+        self.assertGreaterEqual(len(diagonal_linedefs), 4)
+
+    def test_stair_access_emits_intermediate_height_sectors(self) -> None:
+        document = load_example()
+        room_boxes = _place_rooms(document["spaces"], document["progression"], document["connections"])
+        textmap, _stats = build_geometry_textmap(document, room_boxes)
+        groups = _parse_textmap(textmap)
+        heights = sorted({sector["heightfloor"] for sector in groups["sector"]})
+
+        self.assertIn(16, heights)
+        self.assertIn(-12, heights)
+
+    def test_stair_connected_floor_deltas_are_doom_step_safe(self) -> None:
+        document = load_example()
+        room_boxes = _place_rooms(document["spaces"], document["progression"], document["connections"])
+        textmap, _stats = build_geometry_textmap(document, room_boxes)
+        groups = _parse_textmap(textmap)
+
+        sectors = groups["sector"]
+        sidedefs = groups["sidedef"]
+        graph: dict[int, set[int]] = {index: set() for index, _sector in enumerate(sectors)}
+        for index, line in enumerate(groups["linedef"]):
+            if line.get("sideback", -1) < 0:
+                continue
+            front = sidedefs[line["sidefront"]]["sector"]
+            back = sidedefs[line["sideback"]]["sector"]
+            delta = abs(sectors[front]["heightfloor"] - sectors[back]["heightfloor"])
+            if delta <= 24:
+                graph[front].add(back)
+                graph[back].add(front)
+
+        reachable = set()
+        frontier = [index for index, sector in enumerate(sectors) if sector["heightfloor"] == 0]
+        while frontier:
+            sector_id = frontier.pop()
+            if sector_id in reachable:
+                continue
+            reachable.add(sector_id)
+            frontier.extend(sorted(graph[sector_id] - reachable))
+
+        reachable_heights = {sectors[index]["heightfloor"] for index in reachable}
+        self.assertIn(32, reachable_heights)
+        self.assertIn(-24, reachable_heights)
 
     def test_thing_placement_avoids_blocking_height_features(self) -> None:
         document = load_example()
