@@ -18,3 +18,5 @@ jobs:
         run: python -m unittest discover -s tests
       - name: Validate example
         run: python -m romerodsl validate examples/blue_lock_processing.json
+      - name: Export example WAD
+        run: python -m romerodsl export-wad examples/blue_lock_processing.json --output build/blue_lock_processing.wad

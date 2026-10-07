@@ -4,8 +4,9 @@ import json
 import unittest
 from pathlib import Path
 
-from romerodsl.compiler import compile_to_plan
+from romerodsl.compiler import compile_to_layout, compile_to_plan, compile_to_wad
 from romerodsl.schema import validate_document
+from romerodsl.wad import validate_wad
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "blue_lock_processing.json"
 
@@ -54,6 +55,32 @@ class SchemaTests(unittest.TestCase):
                 }
             ],
         )
+
+    def test_compile_to_layout_keeps_semantic_progression(self) -> None:
+        layout = compile_to_layout(load_example())
+        flattened = [token for row in layout["grid"] for token in row]
+
+        self.assertEqual(flattened.count("start"), 1)
+        self.assertEqual(flattened.count("exit"), 1)
+        self.assertEqual(flattened.count("key"), 1)
+        self.assertGreaterEqual(flattened.count("door"), 1)
+        self.assertIn("blue", layout["key_colors"].values())
+        self.assertIn("blue", layout["door_locks"].values())
+        self.assertIn(192, {height for row in layout["floor_heights"] for height in row})
+        self.assertIn(-24, {height for row in layout["floor_heights"] for height in row})
+
+    def test_compile_to_wad_writes_valid_udmf_pwad(self) -> None:
+        output = Path(__file__).resolve().parents[1] / "build" / "test_blue_lock_processing.wad"
+        report = compile_to_wad(load_example(), output)
+        reread = validate_wad(output)
+
+        self.assertTrue(output.exists())
+        self.assertTrue(report["valid"])
+        self.assertEqual(reread["player_starts"], 1)
+        self.assertEqual(reread["keys"], 1)
+        self.assertEqual(reread["exits"], 1)
+        self.assertGreaterEqual(reread["locked_doors"], 1)
+        self.assertGreater(reread["monsters"], 0)
 
 
 if __name__ == "__main__":

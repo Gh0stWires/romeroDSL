@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from romerodsl.compiler import compile_to_plan
+from romerodsl.compiler import compile_to_plan, compile_to_wad
 from romerodsl.schema import validate_document
 
 
@@ -22,12 +22,19 @@ def main(argv: list[str] | None = None) -> int:
     compile_parser.add_argument("path", type=Path)
     compile_parser.add_argument("--output", "-o", type=Path, required=True)
 
+    wad_parser = subparsers.add_parser("export-wad", help="compile a romeroDSL JSON file to a UDMF PWAD")
+    wad_parser.add_argument("path", type=Path)
+    wad_parser.add_argument("--output", "-o", type=Path, required=True)
+    wad_parser.add_argument("--cell-size", type=int, default=128)
+
     args = parser.parse_args(argv)
 
     if args.command == "validate":
         return _validate_command(args.path)
     if args.command == "compile":
         return _compile_command(args.path, args.output)
+    if args.command == "export-wad":
+        return _export_wad_command(args.path, args.output, args.cell_size)
     raise AssertionError(f"unhandled command: {args.command}")
 
 
@@ -50,6 +57,14 @@ def _compile_command(path: Path, output: Path) -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
     print(f"wrote: {output}")
+    return 0
+
+
+def _export_wad_command(path: Path, output: Path, cell_size: int) -> int:
+    document = _load_json(path)
+    report = compile_to_wad(document, output, cell_size=cell_size)
+    print(f"wrote: {output}")
+    print(json.dumps(report, indent=2))
     return 0
 
 
