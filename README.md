@@ -14,7 +14,7 @@ This keeps room topology, height/elevation, and key progression as first-class l
 
 ## Current status
 
-This is v0.5: a GitHub-ready foundation containing:
+This is v0.6: a GitHub-ready foundation containing:
 
 - a canonical JSON form of the DSL
 - an example Doom II techbase map contract
@@ -28,8 +28,11 @@ This is v0.5: a GitHub-ready foundation containing:
 - stair-step sectors for raised platforms and pits that declare stair access/escape
 - a minimal dependency-free UDMF/PWAD exporter
 - unit tests
+- graph-cache extraction into canonical prompt-to-romeroDSL training pairs
 
 The v0.5 WAD exporter uses real room sectors, corridor sectors, tagged door sectors, chamfered irregular-room boundaries, and intra-room height-feature sectors for pillars, stair-access platforms, and stair-escape pits. It resolves semantic material declarations into concrete Doom II flats/textures, rejects missing visible surface textures that can create hall-of-mirrors artifacts in Zandronum, rejects crossing linedefs, and avoids placing actors/items inside blocking height features.
+
+The v0.6 extraction layer turns RomeroGAN `graph_cache_v1` samples into canonical prompt-to-DSL records. It preserves source metadata, prompt text, theme/scale hints, paired key-lock colors, strict progression labels, height-variation labels, and a valid DSL document that can be validated and compiled by this package. This is the bridge toward the next LoRA target: `prompt -> romeroDSL`, not `prompt -> raw raster`.
 
 ## Install for development
 
@@ -67,6 +70,23 @@ python -m romerodsl compile examples/blue_lock_processing.json --output build/bl
 
 The emitted plan is a debug bridge between semantic authorship and UDMF/WAD export.
 
+## Build prompt-to-DSL training pairs
+
+```bash
+python -m romerodsl build-training-pairs \
+  --graph-cache C:/Users/gh0st/Documents/RomeroGan/romerogan_v2/data/graph_cache_v1 \
+  --output build/v06_dsl_training_pairs \
+  --strict-only
+```
+
+The command writes:
+
+- `manifest.jsonl` with prompt, labels, features, and sample path
+- `summary.json` with sample/theme/color counts
+- `samples/dsl_*.json` training records containing `{prompt, dsl, labels, features}`
+
+`--strict-only` keeps samples where the graph cache says the start reaches the exit, keys and locked doors exist, and at least one lock gates exit progression.
+
 ## Design goals
 
 The DSL should be high-level, but not vague. It should capture what a Doom mapper means:
@@ -92,7 +112,7 @@ The compiler may make valid geometry from those decisions, but it should not inv
 3. v0.3: Replace the cell-block compiler with sector-primitive geometry: room sectors, corridor sectors, tagged door sectors, and intra-room height-feature sectors.
 4. v0.4: Add material-aware surfaces, render-surface validation, and fix Zandronum HOM defects found during engine playtesting.
 5. v0.5: Improve geometry authorship: polygonal/irregular rooms, doorway cutouts, stairs, safer monster/item placement, and deeper engine playtesting. Lift specials are deferred until the compiler has a namespace-verified mover model instead of a guessed action number.
-6. v0.6: Extraction from real WAD graph caches into canonical DSL training pairs.
+6. v0.6: Extract real WAD graph caches into canonical prompt-to-DSL training pairs.
 7. v0.7: LoRA fine-tune target: `prompt -> romeroDSL`.
 8. v0.8: Validator-guided generation loop and playability reports.
 
@@ -103,6 +123,7 @@ examples/                  Example DSL documents
 src/romerodsl/             Python package
   schema.py                DSL validation rules
   compiler.py              Abstract geometry-plan compiler
+  extraction.py            Graph-cache to prompt-to-DSL training-pair extraction
   cli.py                   Command line interface
 tests/                     Unit tests
 ```

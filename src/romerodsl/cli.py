@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from romerodsl.compiler import compile_to_plan, compile_to_wad
+from romerodsl.extraction import build_dsl_training_cache
 from romerodsl.schema import validate_document
 
 
@@ -27,6 +28,14 @@ def main(argv: list[str] | None = None) -> int:
     wad_parser.add_argument("--output", "-o", type=Path, required=True)
     wad_parser.add_argument("--cell-size", type=int, default=128)
 
+    training_parser = subparsers.add_parser(
+        "build-training-pairs",
+        help="extract prompt-to-romeroDSL training pairs from a graph cache",
+    )
+    training_parser.add_argument("--graph-cache", type=Path, required=True)
+    training_parser.add_argument("--output", "-o", type=Path, required=True)
+    training_parser.add_argument("--strict-only", action="store_true")
+
     args = parser.parse_args(argv)
 
     if args.command == "validate":
@@ -35,6 +44,8 @@ def main(argv: list[str] | None = None) -> int:
         return _compile_command(args.path, args.output)
     if args.command == "export-wad":
         return _export_wad_command(args.path, args.output, args.cell_size)
+    if args.command == "build-training-pairs":
+        return _build_training_pairs_command(args.graph_cache, args.output, args.strict_only)
     raise AssertionError(f"unhandled command: {args.command}")
 
 
@@ -65,6 +76,13 @@ def _export_wad_command(path: Path, output: Path, cell_size: int) -> int:
     report = compile_to_wad(document, output, cell_size=cell_size)
     print(f"wrote: {output}")
     print(json.dumps(report, indent=2))
+    return 0
+
+
+def _build_training_pairs_command(graph_cache: Path, output: Path, strict_only: bool) -> int:
+    summary = build_dsl_training_cache(graph_cache, output, strict_only=strict_only)
+    print(f"wrote: {output}")
+    print(json.dumps(summary, indent=2))
     return 0
 
 
