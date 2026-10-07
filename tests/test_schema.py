@@ -76,11 +76,26 @@ class SchemaTests(unittest.TestCase):
 
         self.assertTrue(output.exists())
         self.assertTrue(report["valid"])
+        self.assertEqual(report["geometry_profile"], "sector_primitives_v0.3")
         self.assertEqual(reread["player_starts"], 1)
         self.assertEqual(reread["keys"], 1)
         self.assertEqual(reread["exits"], 1)
         self.assertGreaterEqual(reread["locked_doors"], 1)
+        self.assertEqual(reread["locked_door_linedefs"], reread["bidirectional_door_linedefs"])
+        self.assertGreaterEqual(reread["closed_door_sectors"], 1)
         self.assertGreater(reread["monsters"], 0)
+
+    def test_sector_primitive_compiler_uses_rooms_and_height_feature_sectors(self) -> None:
+        output = Path(__file__).resolve().parents[1] / "build" / "test_sector_primitives.wad"
+        report = compile_to_wad(load_example(), output)
+
+        self.assertEqual(report["room_sectors"], 7)
+        self.assertEqual(report["door_sectors"], 1)
+        self.assertEqual(report["height_feature_sectors"], 6)
+        self.assertLess(report["sectors"], 60)
+        self.assertIn(-24, report["floor_height_levels"])
+        self.assertIn(32, report["floor_height_levels"])
+        self.assertIn(192, report["floor_height_levels"])
 
 
 if __name__ == "__main__":

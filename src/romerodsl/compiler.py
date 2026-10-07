@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from romerodsl.geometry import write_geometry_wad
 from romerodsl.schema import validate_document
 from romerodsl.wad import (
     AMMO,
@@ -24,7 +25,6 @@ from romerodsl.wad import (
     MONSTER,
     START,
     WEAPON,
-    write_wad_from_layout,
 )
 
 Cell = tuple[int, int]
@@ -137,10 +137,12 @@ def compile_to_layout(document: dict[str, Any]) -> dict[str, Any]:
 
 
 def compile_to_wad(document: dict[str, Any], path: Path, cell_size: int = 128) -> dict[str, Any]:
-    """Compile romeroDSL directly to a simple UDMF PWAD."""
+    """Compile romeroDSL directly to a sector-primitive UDMF PWAD."""
 
-    layout = compile_to_layout(document)
-    return write_wad_from_layout(layout, Path(path), cell_size=cell_size)
+    report = validate_document(document)
+    report.raise_for_errors()
+    room_boxes = _place_rooms(document["spaces"], document["progression"], document["connections"])
+    return write_geometry_wad(document, room_boxes, Path(path), cell_size=cell_size)
 
 
 def _place_rooms(spaces: list[dict[str, Any]], progression: dict[str, Any], connections: list[dict[str, Any]]) -> dict[str, Box]:

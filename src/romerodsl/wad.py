@@ -345,6 +345,14 @@ def validate_wad(path: Path) -> dict[str, Any]:
         "doors": len(door_tags),
         "locked_doors": len(locked_door_tags),
         "locked_door_linedefs": sum(line.get("special") == 12 and line.get("locknumber", 0) > 0 for line in linedefs),
+        "bidirectional_door_linedefs": sum(
+            line.get("special") == 12 and line.get("playeruse") is True and line.get("playeruseback") is True
+            for line in linedefs
+        ),
+        "closed_door_sectors": sum(
+            sector["heightfloor"] == sector["heightceiling"] for sector in sectors
+        ),
+        "floor_height_levels": sorted({sector["heightfloor"] for sector in sectors}),
         "monsters": sum(thing["type"] in {3001, 3002, 3003, 3004, 3005, 3006} for thing in things),
         "engine_tested": False,
     }

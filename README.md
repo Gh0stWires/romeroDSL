@@ -14,16 +14,17 @@ This keeps room topology, height/elevation, and key progression as first-class l
 
 ## Current status
 
-This is v0.2: a GitHub-ready foundation containing:
+This is v0.3: a GitHub-ready foundation containing:
 
 - a canonical JSON form of the DSL
 - an example Doom II techbase map contract
 - a Python validator for references and progression invariants
-- a semantic layout compiler that turns rooms/connections into a simple cell layout
+- a debug cell-layout compiler
+- a sector-primitive geometry compiler that turns semantic rooms/connections into UDMF sectors
 - a minimal dependency-free UDMF/PWAD exporter
 - unit tests
 
-The WAD exporter is intentionally primitive: one sector per semantic cell, rectangular rooms, simple corridors, and basic doors/items/monsters. That is enough to prove the semantic DSL path can preserve key progression and height topology before we make the geometry mapper-quality.
+The v0.3 WAD exporter uses real room sectors, corridor sectors, tagged door sectors, and intra-room height-feature sectors for pillars, platforms, and pits. Geometry is still simple and has not been engine-playtested, but the path now proves semantic DSL authorship can survive into much cleaner Doom geometry than the cell-grid prototype.
 
 ## Install for development
 
@@ -51,7 +52,7 @@ valid: examples/blue_lock_processing.json
 python -m romerodsl export-wad examples/blue_lock_processing.json --output build/blue_lock_processing.wad
 ```
 
-The exported WAD should contain one player start, one exit, a blue key, at least one blue-locked door, monsters, items, and sector height variation from the DSL. It has not been engine-playtested yet.
+The exported WAD should contain one player start, one exit, a blue key, at least one blue-locked door, monsters, items, real room/corridor/door sectors, and sector height variation from the DSL. It has not been engine-playtested yet.
 
 ## Emit an abstract geometry plan
 
@@ -82,10 +83,11 @@ The compiler may make valid geometry from those decisions, but it should not inv
 
 1. v0.1: DSL schema, examples, validator, abstract plan compiler.
 2. v0.2: WAD/UDMF compiler for a constrained subset: rooms, hallways, doors, blue/red/yellow locks, starts, exits, monsters, items.
-3. v0.3: Replace the cell-block compiler with mapper-quality sector geometry: polygonal rooms, doorway cutouts, stairs, pits, pillars, platforms, and safer monster/item placement.
-4. v0.4: Extraction from real WAD graph caches into canonical DSL training pairs.
-5. v0.5: LoRA fine-tune target: `prompt -> romeroDSL`.
-6. v0.6: Validator-guided generation loop and playability reports.
+3. v0.3: Replace the cell-block compiler with sector-primitive geometry: room sectors, corridor sectors, tagged door sectors, and intra-room height-feature sectors.
+4. v0.4: Improve geometry authorship: polygonal/irregular rooms, doorway cutouts, stairs, lifts, safer monster/item placement, and engine playtesting.
+5. v0.5: Extraction from real WAD graph caches into canonical DSL training pairs.
+6. v0.6: LoRA fine-tune target: `prompt -> romeroDSL`.
+7. v0.7: Validator-guided generation loop and playability reports.
 
 ## Repository layout
 
