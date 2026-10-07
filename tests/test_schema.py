@@ -144,6 +144,23 @@ class SchemaTests(unittest.TestCase):
 
         self.assertEqual(wrong_facing, [])
 
+    def test_sector_primitive_two_sided_lines_have_upper_and_lower_textures(self) -> None:
+        document = load_example()
+        room_boxes = _place_rooms(document["spaces"], document["progression"], document["connections"])
+        textmap, _stats = build_geometry_textmap(document, room_boxes)
+        groups = _parse_textmap(textmap)
+
+        missing = []
+        for index, line in enumerate(groups["linedef"]):
+            if line.get("sideback", -1) < 0:
+                continue
+            for side_key in ("sidefront", "sideback"):
+                side = groups["sidedef"][line[side_key]]
+                if side.get("texturetop") == "-" or side.get("texturebottom") == "-":
+                    missing.append((index, side_key, side.get("texturetop"), side.get("texturebottom")))
+
+        self.assertEqual(missing, [])
+
 
 if __name__ == "__main__":
     unittest.main()

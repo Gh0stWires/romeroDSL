@@ -214,12 +214,14 @@ class UdmfBuilder:
         back_sector = self.sectors[back["sector"]]
         front["texturemiddle"] = "-"
         back["texturemiddle"] = "-"
-        floor_step = front_sector["heightfloor"] != back_sector["heightfloor"]
-        ceiling_step = front_sector["heightceiling"] != back_sector["heightceiling"]
-        front["texturebottom"] = WALL_TEXTURE if floor_step else "-"
-        back["texturebottom"] = WALL_TEXTURE if floor_step else "-"
-        front["texturetop"] = WALL_TEXTURE if ceiling_step else "-"
-        back["texturetop"] = WALL_TEXTURE if ceiling_step else "-"
+        # Keep upper/lower textures populated even when a same-height portal
+        # does not currently expose them. Zandronum treats any later-exposed
+        # upper/lower gap as a missing texture/HOM surface, and harmless hidden
+        # textures are safer than sparse '-' placeholders for generated maps.
+        front["texturebottom"] = WALL_TEXTURE
+        back["texturebottom"] = WALL_TEXTURE
+        front["texturetop"] = WALL_TEXTURE
+        back["texturetop"] = WALL_TEXTURE
 
     def _apply_door_textures(self, line_id: int) -> None:
         line = self.linedefs[line_id]
