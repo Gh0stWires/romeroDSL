@@ -9,6 +9,7 @@ from typing import Any
 
 from romerodsl.compiler import compile_to_plan, compile_to_wad
 from romerodsl.extraction import build_dsl_training_cache
+from romerodsl.finetune import build_sft_jsonl, validate_sft_jsonl
 from romerodsl.schema import validate_document
 
 
@@ -36,6 +37,19 @@ def main(argv: list[str] | None = None) -> int:
     training_parser.add_argument("--output", "-o", type=Path, required=True)
     training_parser.add_argument("--strict-only", action="store_true")
 
+    sft_parser = subparsers.add_parser(
+        "build-sft-jsonl",
+        help="convert v0.6 training pairs into v0.7 chat-style SFT JSONL",
+    )
+    sft_parser.add_argument("--training-cache", type=Path, required=True)
+    sft_parser.add_argument("--output", "-o", type=Path, required=True)
+
+    validate_sft_parser = subparsers.add_parser(
+        "validate-sft-jsonl",
+        help="validate v0.7 SFT JSONL assistant outputs as romeroDSL",
+    )
+    validate_sft_parser.add_argument("path", type=Path)
+
     args = parser.parse_args(argv)
 
     if args.command == "validate":
@@ -46,6 +60,10 @@ def main(argv: list[str] | None = None) -> int:
         return _export_wad_command(args.path, args.output, args.cell_size)
     if args.command == "build-training-pairs":
         return _build_training_pairs_command(args.graph_cache, args.output, args.strict_only)
+    if args.command == "build-sft-jsonl":
+        return _build_sft_jsonl_command(args.training_cache, args.output)
+    if args.command == "validate-sft-jsonl":
+        return _validate_sft_jsonl_command(args.path)
     raise AssertionError(f"unhandled command: {args.command}")
 
 
@@ -84,6 +102,19 @@ def _build_training_pairs_command(graph_cache: Path, output: Path, strict_only: 
     print(f"wrote: {output}")
     print(json.dumps(summary, indent=2))
     return 0
+
+
+def _build_sft_jsonl_command(training_cache: Path, output: Path) -> int:
+    summary = build_sft_jsonl(training_cache, output)
+    print(f"wrote: {output}")
+    print(json.dumps(summary, indent=2))
+    return 0
+
+
+def _validate_sft_jsonl_command(path: Path) -> int:
+    summary = validate_sft_jsonl(path)
+    print(json.dumps(summary, indent=2))
+    return 0 if summary["valid"] else 1
 
 
 def _load_json(path: Path) -> dict[str, Any]:

@@ -34,6 +34,8 @@ The v0.5 WAD exporter uses real room sectors, corridor sectors, tagged door sect
 
 The v0.6 extraction layer turns RomeroGAN `graph_cache_v1` samples into canonical prompt-to-DSL records. It preserves source metadata, prompt text, theme/scale hints, paired key-lock colors, strict progression labels, height-variation labels, and a valid DSL document that can be validated and compiled by this package. This is the bridge toward the next LoRA target: `prompt -> romeroDSL`, not `prompt -> raw raster`.
 
+The first v0.7 slice converts those validated prompt-to-DSL records into chat-style supervised fine-tuning JSONL and validates every assistant output as parseable, canonical romeroDSL before training.
+
 ## Install for development
 
 ```bash
@@ -87,6 +89,18 @@ The command writes:
 
 `--strict-only` keeps samples where the graph cache says the start reaches the exit, keys and locked doors exist, and at least one lock gates exit progression.
 
+## Build v0.7 supervised fine-tuning JSONL
+
+```bash
+python -m romerodsl build-sft-jsonl \
+  --training-cache build/v06_dsl_training_pairs \
+  --output build/v07_sft/romerodsl_sft_v07.jsonl
+
+python -m romerodsl validate-sft-jsonl build/v07_sft/romerodsl_sft_v07.jsonl
+```
+
+The SFT file uses chat-style records with a system instruction, the user prompt, and an assistant response that is only the canonical DSL JSON object. `validate-sft-jsonl` reparses every assistant response and runs `validate_document()` before the file is considered trainable.
+
 ## Design goals
 
 The DSL should be high-level, but not vague. It should capture what a Doom mapper means:
@@ -124,6 +138,7 @@ src/romerodsl/             Python package
   schema.py                DSL validation rules
   compiler.py              Abstract geometry-plan compiler
   extraction.py            Graph-cache to prompt-to-DSL training-pair extraction
+  finetune.py              v0.7 SFT JSONL build/validation helpers
   cli.py                   Command line interface
 tests/                     Unit tests
 ```
