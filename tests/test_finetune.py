@@ -28,6 +28,23 @@ class FinetuneTests(unittest.TestCase):
         self.assertIn("blue key before a blue locked door", sft_record["messages"][1]["content"])
         self.assertTrue(report.valid, report.errors)
         self.assertEqual(sft_record["metadata"]["source_sample"], "samples/example_MAP06.json")
+        self.assertNotIn("metadata", assistant_json)
+
+    def test_sft_output_omits_bulky_source_provenance_metadata(self) -> None:
+        sample = progression_sample()
+        sample["heights"] = {"levels": list(range(-128, 4096, 16))}
+        training_record = training_record_from_graph_sample(
+            sample, sample_path="samples/example_MAP06.json"
+        )
+
+        sft_record = sft_record_from_training_record(training_record)
+        assistant_json = json.loads(sft_record["messages"][-1]["content"])
+        report = validate_document(assistant_json)
+
+        self.assertTrue(report.valid, report.errors)
+        self.assertNotIn("metadata", assistant_json)
+        self.assertNotIn("source_height_levels", sft_record["messages"][-1]["content"])
+        self.assertLess(len(sft_record["messages"][-1]["content"]), 6000)
 
     def test_build_and_validate_sft_jsonl_from_training_cache(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

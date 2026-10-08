@@ -8,6 +8,7 @@ from romerodsl.extraction import (
 )
 from romerodsl.finetune import (
     build_sft_jsonl,
+    canonical_sft_dsl,
     sft_record_from_training_record,
     validate_sft_jsonl,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "SFTTrainConfig",
     "build_dsl_training_cache",
     "build_sft_jsonl",
+    "canonical_sft_dsl",
     "compile_to_layout",
     "compile_to_plan",
     "compile_to_wad",

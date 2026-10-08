@@ -7,6 +7,7 @@ and validator remain the gate after generation.
 
 from __future__ import annotations
 
+import copy
 import json
 from collections import Counter
 from pathlib import Path
@@ -19,8 +20,27 @@ SYSTEM_PROMPT = (
     "You generate valid romeroDSL JSON for Doom II maps. "
     "Return only one JSON object. Do not wrap it in markdown. "
     "The JSON must pass the romerodsl validator and must preserve requested keys, locks, "
-    "progression, theme, combat, resources, materials, and height topology."
+    "progression, theme, combat, resources, materials, and height topology. "
+    "Do not include source WAD provenance metadata or long source height arrays."
 )
+
+
+def canonical_sft_dsl(dsl: dict[str, Any]) -> dict[str, Any]:
+    """Return the model target DSL without bulky extraction provenance.
+
+    Training records keep source metadata outside the assistant message. The model
+    should learn the authored design contract, not memorize long source-WAD audit
+    arrays such as hundreds of raw height levels.
+    """
+
+    document = copy.deepcopy(dsl)
+    document.pop("metadata", None)
+    design_intent = document.get("design_intent")
+    if isinstance(design_intent, dict):
+        design_intent.pop("extraction_note", None)
+    report = validate_document(document)
+    report.raise_for_errors()
+    return document
 
 
 def sft_record_from_training_record(record: dict[str, Any]) -> dict[str, Any]:
@@ -32,6 +52,7 @@ def sft_record_from_training_record(record: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("training record is missing a DSL object")
     report = validate_document(dsl)
     report.raise_for_errors()
+    assistant_dsl = canonical_sft_dsl(dsl)
     labels = record.get("labels") if isinstance(record.get("labels"), dict) else {}
     features = record.get("features") if isinstance(record.get("features"), dict) else {}
     return {
@@ -39,7 +60,7 @@ def sft_record_from_training_record(record: dict[str, Any]) -> dict[str, Any]:
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
-            {"role": "assistant", "content": json.dumps(dsl, indent=2, sort_keys=True, allow_nan=False)},
+            {"role": "assistant", "content": json.dumps(assistant_dsl, indent=2, sort_keys=True, allow_nan=False)},
         ],
         "metadata": {
             "source_sample": record.get("source_sample"),

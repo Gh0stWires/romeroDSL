@@ -108,7 +108,7 @@ The first training target is `Qwen/Qwen2.5-Coder-1.5B-Instruct` because romeroDS
 ```bash
 python -m romerodsl train-qwen-lora \
   --sft-jsonl build/v07_sft/romerodsl_sft_v07.jsonl \
-  --output runs/qwen2p5_coder_1p5b_v07 \
+  --output runs/qwen2p5_coder_1p5b_v07_slim \
   --max-length 3072 \
   --batch-size 1 \
   --gradient-accumulation-steps 8 \
@@ -116,7 +116,7 @@ python -m romerodsl train-qwen-lora \
   --learning-rate 0.0002
 ```
 
-The trainer writes `train_config.json`, `metrics.json`, periodic `adapter-step-*` checkpoints, and the final LoRA adapter under `runs/qwen2p5_coder_1p5b_v07/adapter`.
+The trainer writes `train_config.json`, `metrics.json`, periodic `adapter-step-*` checkpoints, and the final LoRA adapter under `runs/qwen2p5_coder_1p5b_v07_slim/adapter`. The v0.7 SFT target intentionally omits bulky source-WAD provenance fields such as raw `source_height_levels`; those stay in record metadata, not in the model's JSON response.
 
 ## Design goals
 
