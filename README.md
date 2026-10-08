@@ -101,6 +101,23 @@ python -m romerodsl validate-sft-jsonl build/v07_sft/romerodsl_sft_v07.jsonl
 
 The SFT file uses chat-style records with a system instruction, the user prompt, and an assistant response that is only the canonical DSL JSON object. `validate-sft-jsonl` reparses every assistant response and runs `validate_document()` before the file is considered trainable.
 
+## Train v0.7 Qwen LoRA adapter
+
+The first training target is `Qwen/Qwen2.5-Coder-1.5B-Instruct` because romeroDSL is strict JSON/code-like output and the 1.5B model is small enough for fast local iteration.
+
+```bash
+python -m romerodsl train-qwen-lora \
+  --sft-jsonl build/v07_sft/romerodsl_sft_v07.jsonl \
+  --output runs/qwen2p5_coder_1p5b_v07 \
+  --max-length 3072 \
+  --batch-size 1 \
+  --gradient-accumulation-steps 8 \
+  --epochs 1 \
+  --learning-rate 0.0002
+```
+
+The trainer writes `train_config.json`, `metrics.json`, periodic `adapter-step-*` checkpoints, and the final LoRA adapter under `runs/qwen2p5_coder_1p5b_v07/adapter`.
+
 ## Design goals
 
 The DSL should be high-level, but not vague. It should capture what a Doom mapper means:
@@ -139,6 +156,7 @@ src/romerodsl/             Python package
   compiler.py              Abstract geometry-plan compiler
   extraction.py            Graph-cache to prompt-to-DSL training-pair extraction
   finetune.py              v0.7 SFT JSONL build/validation helpers
+  qwen_lora.py             v0.7 Qwen LoRA training harness
   cli.py                   Command line interface
 tests/                     Unit tests
 ```

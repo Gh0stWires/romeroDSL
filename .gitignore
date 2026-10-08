@@ -27,6 +27,7 @@ venv/
 
 # Generated Doom artifacts
 outputs/
+runs/
 *.wad
 *.pk3
 *.pk7

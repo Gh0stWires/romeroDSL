@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "romerodsl"
-version = "0.6.0"
+version = "0.7.0"
 description = "High-level semantic DSL for Doom map generation"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -24,6 +24,16 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = []
+
+[project.optional-dependencies]
+train = [
+  "accelerate>=1.0",
+  "peft>=0.13",
+  "safetensors>=0.4",
+  "sentencepiece>=0.2",
+  "torch>=2.4",
+  "transformers>=4.46",
+]
 
 [project.scripts]
 romerodsl = "romerodsl.cli:main"

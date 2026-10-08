@@ -10,6 +10,7 @@ from typing import Any
 from romerodsl.compiler import compile_to_plan, compile_to_wad
 from romerodsl.extraction import build_dsl_training_cache
 from romerodsl.finetune import build_sft_jsonl, validate_sft_jsonl
+from romerodsl.qwen_lora import SFTTrainConfig, train_qwen_lora, training_run_plan
 from romerodsl.schema import validate_document
 
 
@@ -50,6 +51,23 @@ def main(argv: list[str] | None = None) -> int:
     )
     validate_sft_parser.add_argument("path", type=Path)
 
+    train_parser = subparsers.add_parser(
+        "train-qwen-lora",
+        help="train a Qwen LoRA adapter on v0.7 prompt-to-romeroDSL SFT JSONL",
+    )
+    train_parser.add_argument("--sft-jsonl", type=Path, required=True)
+    train_parser.add_argument("--output", "-o", type=Path, required=True)
+    train_parser.add_argument("--model", default="Qwen/Qwen2.5-Coder-1.5B-Instruct")
+    train_parser.add_argument("--max-length", type=int, default=4096)
+    train_parser.add_argument("--batch-size", type=int, default=1)
+    train_parser.add_argument("--gradient-accumulation-steps", type=int, default=8)
+    train_parser.add_argument("--learning-rate", type=float, default=2e-4)
+    train_parser.add_argument("--epochs", type=float, default=1.0)
+    train_parser.add_argument("--max-steps", type=int)
+    train_parser.add_argument("--lora-rank", type=int, default=16)
+    train_parser.add_argument("--lora-alpha", type=int, default=32)
+    train_parser.add_argument("--plan-only", action="store_true")
+
     args = parser.parse_args(argv)
 
     if args.command == "validate":
@@ -64,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
         return _build_sft_jsonl_command(args.training_cache, args.output)
     if args.command == "validate-sft-jsonl":
         return _validate_sft_jsonl_command(args.path)
+    if args.command == "train-qwen-lora":
+        return _train_qwen_lora_command(args)
     raise AssertionError(f"unhandled command: {args.command}")
 
 
@@ -115,6 +135,28 @@ def _validate_sft_jsonl_command(path: Path) -> int:
     summary = validate_sft_jsonl(path)
     print(json.dumps(summary, indent=2))
     return 0 if summary["valid"] else 1
+
+
+def _train_qwen_lora_command(args: argparse.Namespace) -> int:
+    config = SFTTrainConfig(
+        sft_jsonl=args.sft_jsonl,
+        output_dir=args.output,
+        model_name=args.model,
+        max_length=args.max_length,
+        batch_size=args.batch_size,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        learning_rate=args.learning_rate,
+        epochs=args.epochs,
+        max_steps=args.max_steps,
+        lora_rank=args.lora_rank,
+        lora_alpha=args.lora_alpha,
+    )
+    if args.plan_only:
+        print(json.dumps(training_run_plan(config), indent=2))
+        return 0
+    metrics = train_qwen_lora(config)
+    print(json.dumps({"adapter_dir": metrics.get("adapter_dir"), "steps": len(metrics.get("steps", []))}, indent=2))
+    return 0
 
 
 def _load_json(path: Path) -> dict[str, Any]:

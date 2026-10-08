@@ -11,10 +11,12 @@ from romerodsl.finetune import (
     sft_record_from_training_record,
     validate_sft_jsonl,
 )
+from romerodsl.qwen_lora import SFTTrainConfig, train_qwen_lora, training_run_plan
 from romerodsl.schema import ValidationReport, validate_document
 
 __all__ = [
     "ValidationReport",
+    "SFTTrainConfig",
     "build_dsl_training_cache",
     "build_sft_jsonl",
     "compile_to_layout",
@@ -23,6 +25,8 @@ __all__ = [
     "dsl_from_graph_sample",
     "sft_record_from_training_record",
     "training_record_from_graph_sample",
+    "train_qwen_lora",
+    "training_run_plan",
     "validate_document",
     "validate_sft_jsonl",
 ]
