@@ -7,7 +7,7 @@ from pathlib import Path
 from romerodsl.compiler import _place_rooms, compile_to_layout, compile_to_plan, compile_to_wad
 from romerodsl.geometry import _box_to_rect, _pillar_rects, build_geometry_textmap
 from romerodsl.schema import validate_document
-from romerodsl.wad import _parse_textmap, validate_wad
+from romerodsl.wad import DOOR_LOCK_NUMBERS, KEY_COLOR_THING_TYPES, _parse_textmap, validate_wad
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "blue_lock_processing.json"
 
@@ -47,6 +47,13 @@ class SchemaTests(unittest.TestCase):
 
         self.assertFalse(report.valid)
         self.assertTrue(any("invalid wall material" in error for error in report.errors))
+
+    def test_zdoom_keycard_lock_numbers_match_exported_key_colors(self) -> None:
+        # ZDoom locknumber values are keycard locks: 1 red, 2 blue, 3 yellow.
+        # A mismatched value makes a generated locked door look present in UDMF
+        # validation while failing actual play: the visible key cannot open it.
+        self.assertEqual(KEY_COLOR_THING_TYPES, {"blue": 5, "red": 13, "yellow": 6})
+        self.assertEqual(DOOR_LOCK_NUMBERS, {"red": 1, "blue": 2, "yellow": 3})
 
     def test_compile_to_plan_preserves_progression_gate(self) -> None:
         plan = compile_to_plan(load_example())

@@ -37,7 +37,7 @@ THING_TYPES = {
     OBSTACLE: 2035,
 }
 KEY_COLOR_THING_TYPES = {"blue": 5, "red": 13, "yellow": 6}
-DOOR_LOCK_NUMBERS = {"blue": 2, "red": 3, "yellow": 4}
+DOOR_LOCK_NUMBERS = {"red": 1, "blue": 2, "yellow": 3}
 WALL_TEXTURE = "STARTAN2"
 FLOOR_TEXTURE = "FLOOR0_1"
 DOOR_TEXTURE = "BIGDOOR2"
