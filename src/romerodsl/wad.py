@@ -37,7 +37,9 @@ THING_TYPES = {
     OBSTACLE: 2035,
 }
 KEY_COLOR_THING_TYPES = {"blue": 5, "red": 13, "yellow": 6}
+KEY_THING_TYPE_COLORS = {thing_type: color for color, thing_type in KEY_COLOR_THING_TYPES.items()}
 DOOR_LOCK_NUMBERS = {"red": 1, "blue": 2, "yellow": 3}
+DOOR_LOCK_NUMBER_COLORS = {lock_number: color for color, lock_number in DOOR_LOCK_NUMBERS.items()}
 WALL_TEXTURE = "STARTAN2"
 FLOOR_TEXTURE = "FLOOR0_1"
 DOOR_TEXTURE = "BIGDOOR2"
@@ -338,12 +340,15 @@ def validate_wad(path: Path) -> dict[str, Any]:
     if invalid_side_references:
             raise ValueError("linedef references invalid sidedef")
     unreferenced_sidedefs = sorted(set(range(len(sidedefs))) - referenced_sidedefs)
-    door_lines = [line for line in linedefs if line.get("special") == 12]
+    door_line_entries = [(index, line) for index, line in enumerate(linedefs) if line.get("special") == 12]
+    door_lines = [line for _index, line in door_line_entries]
     door_tags = {line.get("arg0") for line in door_lines if line.get("arg0", 0) > 0}
     locked_door_tags = {
         line.get("arg0") for line in door_lines if line.get("arg0", 0) > 0 and line.get("locknumber", 0) > 0
     }
     missing_visible_textures = _missing_visible_textures(linedefs, sidedefs, sectors)
+    key_colors = _count_key_colors(things)
+    locked_door_colors, key_lock_pair_errors = _locked_door_color_report(door_line_entries, key_colors)
     unknown_flats = sorted(
         {
             texture
@@ -361,7 +366,7 @@ def validate_wad(path: Path) -> dict[str, Any]:
         }
     )
     return {
-        "valid": True,
+        "valid": not key_lock_pair_errors,
         "namespace": "ZDoom",
         "sectors": len(sectors),
         "vertices": len(groups["vertex"]),
@@ -372,10 +377,14 @@ def validate_wad(path: Path) -> dict[str, Any]:
         "things": len(things),
         "player_starts": sum(thing["type"] == 1 for thing in things),
         "keys": sum(thing["type"] in {5, 6, 13, 38, 39, 40} for thing in things),
+        "key_colors": key_colors,
         "exits": sum(line.get("special") == 243 for line in linedefs),
         "door_linedefs": len(door_lines),
         "doors": len(door_tags),
         "locked_doors": len(locked_door_tags),
+        "locked_door_colors": locked_door_colors,
+        "key_lock_pairs_valid": not key_lock_pair_errors,
+        "key_lock_pair_errors": key_lock_pair_errors,
         "locked_door_linedefs": sum(line.get("special") == 12 and line.get("locknumber", 0) > 0 for line in linedefs),
         "bidirectional_door_linedefs": sum(
             line.get("special") == 12 and line.get("playeruse") is True and line.get("playeruseback") is True
@@ -392,6 +401,38 @@ def validate_wad(path: Path) -> dict[str, Any]:
         "monsters": sum(thing["type"] in {3001, 3002, 3003, 3004, 3005, 3006} for thing in things),
         "engine_tested": False,
     }
+
+
+def _count_key_colors(things: list[dict[str, Any]]) -> dict[str, int]:
+    colors: dict[str, int] = {}
+    for thing in things:
+        thing_type = thing.get("type")
+        if not isinstance(thing_type, int):
+            continue
+        color = KEY_THING_TYPE_COLORS.get(thing_type)
+        if color is None:
+            continue
+        colors[color] = colors.get(color, 0) + 1
+    return dict(sorted(colors.items()))
+
+
+def _locked_door_color_report(
+    door_line_entries: list[tuple[int, dict[str, Any]]], key_colors: dict[str, int]
+) -> tuple[dict[str, int], list[dict[str, Any]]]:
+    locked_door_colors: dict[str, int] = {}
+    errors: list[dict[str, Any]] = []
+    for line_index, line in door_line_entries:
+        lock_number = line.get("locknumber", 0)
+        if lock_number <= 0:
+            continue
+        color = DOOR_LOCK_NUMBER_COLORS.get(lock_number)
+        if color is None:
+            errors.append({"door_linedef": line_index, "locknumber": lock_number, "error": "unknown_locknumber"})
+            continue
+        locked_door_colors[color] = locked_door_colors.get(color, 0) + 1
+        if key_colors.get(color, 0) <= 0:
+            errors.append({"door_linedef": line_index, "locknumber": lock_number, "color": color, "error": "missing_matching_key"})
+    return dict(sorted(locked_door_colors.items())), errors
 
 
 def _missing_visible_textures(

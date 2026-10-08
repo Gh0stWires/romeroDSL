@@ -14,7 +14,9 @@ This keeps room topology, height/elevation, and key progression as first-class l
 
 ## Current status
 
-This is v0.6: a GitHub-ready foundation containing:
+This is v0.8-pre: a GitHub-ready foundation plus a first Qwen LoRA proof-of-learning and the beginning of stricter playability validation. The v0.7 adapter proved that `prompt -> romeroDSL -> WAD` can work mechanically, but v0.8 deliberately raises the bar: a reported key/door pair must now match concrete ZDoom keycard and lock mechanics, and later v0.8 work will validate real route-gated progression instead of object counts alone.
+
+The package currently contains:
 
 - a canonical JSON form of the DSL
 - an example Doom II techbase map contract
@@ -29,12 +31,17 @@ This is v0.6: a GitHub-ready foundation containing:
 - a minimal dependency-free UDMF/PWAD exporter
 - unit tests
 - graph-cache extraction into canonical prompt-to-romeroDSL training pairs
+- chat-style v0.7 SFT export/validation helpers
+- a Qwen2.5-Coder LoRA training harness
+- v0.8 WAD validation that reports concrete key colors, locked-door colors, and mismatched key/lock pairs
 
 The v0.5 WAD exporter uses real room sectors, corridor sectors, tagged door sectors, chamfered irregular-room boundaries, and intra-room height-feature sectors for pillars, stair-access platforms, and stair-escape pits. It resolves semantic material declarations into concrete Doom II flats/textures, rejects missing visible surface textures that can create hall-of-mirrors artifacts in Zandronum, rejects crossing linedefs, and avoids placing actors/items inside blocking height features.
 
 The v0.6 extraction layer turns RomeroGAN `graph_cache_v1` samples into canonical prompt-to-DSL records. It preserves source metadata, prompt text, theme/scale hints, paired key-lock colors, strict progression labels, height-variation labels, and a valid DSL document that can be validated and compiled by this package. This is the bridge toward the next LoRA target: `prompt -> romeroDSL`, not `prompt -> raw raster`.
 
-The first v0.7 slice converts those validated prompt-to-DSL records into chat-style supervised fine-tuning JSONL and validates every assistant output as parseable, canonical romeroDSL before training.
+The first v0.7 slice converts those validated prompt-to-DSL records into chat-style supervised fine-tuning JSONL and validates every assistant output as parseable, canonical romeroDSL before training. The slim Qwen adapter can generate valid romeroDSL that compiles to a Zandronum-loadable WAD, but the current generated samples are not yet proof of broad map-design generalization.
+
+The first v0.8 slice fixes and validates concrete ZDoom keycard/lock mechanics. A reported red/blue/yellow locked door must now use a lock number that matches the exported visible keycard color, and mismatched key/lock pairs mark the WAD report invalid instead of passing as a misleading object count.
 
 ## Install for development
 
@@ -42,7 +49,7 @@ The first v0.7 slice converts those validated prompt-to-DSL records into chat-st
 python -m pip install -e .
 ```
 
-No runtime dependencies are required for v0.1.
+No runtime dependencies are required for the compiler/validator path. Training requires the optional `train` dependency group.
 
 ## Validate the example
 
@@ -62,7 +69,7 @@ valid: examples/blue_lock_processing.json
 python -m romerodsl export-wad examples/blue_lock_processing.json --output build/blue_lock_processing.wad
 ```
 
-The exported WAD should contain one player start, one exit, a blue key, at least one blue-locked door, monsters, items, real room/corridor/door sectors, sector height variation from the DSL, zero missing visible textures, and no unknown Doom II flats/textures.
+The exported WAD should contain one player start, one exit, a blue key, at least one blue-locked door, monsters, items, real room/corridor/door sectors, sector height variation from the DSL, zero missing visible textures, and no unknown Doom II flats/textures. In v0.8, the WAD report also includes `key_colors`, `locked_door_colors`, `key_lock_pairs_valid`, and `key_lock_pair_errors` so a mismatched visible key and UDMF lock number cannot pass as a valid keyed-door report.
 
 ## Emit an abstract geometry plan
 
@@ -145,7 +152,7 @@ The compiler may make valid geometry from those decisions, but it should not inv
 5. v0.5: Improve geometry authorship: polygonal/irregular rooms, doorway cutouts, stairs, safer monster/item placement, and deeper engine playtesting. Lift specials are deferred until the compiler has a namespace-verified mover model instead of a guessed action number.
 6. v0.6: Extract real WAD graph caches into canonical prompt-to-DSL training pairs.
 7. v0.7: LoRA fine-tune target: `prompt -> romeroDSL`.
-8. v0.8: Validator-guided generation loop and playability reports.
+8. v0.8: Stricter playability validation: concrete ZDoom key/lock mechanics, route-gated progression checks, template-leak detection, and multi-prompt evaluation before retraining.
 
 ## Repository layout
 

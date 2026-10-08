@@ -7,7 +7,14 @@ from pathlib import Path
 from romerodsl.compiler import _place_rooms, compile_to_layout, compile_to_plan, compile_to_wad
 from romerodsl.geometry import _box_to_rect, _pillar_rects, build_geometry_textmap
 from romerodsl.schema import validate_document
-from romerodsl.wad import DOOR_LOCK_NUMBERS, KEY_COLOR_THING_TYPES, _parse_textmap, validate_wad
+from romerodsl.wad import (
+    DOOR_LOCK_NUMBERS,
+    KEY_COLOR_THING_TYPES,
+    _parse_textmap,
+    _read_textmap,
+    _write_textmap_wad,
+    validate_wad,
+)
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "blue_lock_processing.json"
 
@@ -122,6 +129,34 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual(reread["unknown_flats"], [])
         self.assertEqual(reread["unknown_textures"], [])
         self.assertGreater(reread["monsters"], 0)
+
+    def test_validate_wad_reports_concrete_key_lock_color_pairs(self) -> None:
+        output = Path(__file__).resolve().parents[1] / "build" / "test_key_lock_pairs.wad"
+        compile_to_wad(load_example(), output)
+
+        report = validate_wad(output)
+
+        self.assertEqual(report["key_colors"], {"blue": 1})
+        self.assertEqual(report["locked_door_colors"], {"blue": 1})
+        self.assertTrue(report["key_lock_pairs_valid"])
+        self.assertEqual(report["key_lock_pair_errors"], [])
+
+    def test_validate_wad_invalidates_mismatched_key_lock_colors(self) -> None:
+        output = Path(__file__).resolve().parents[1] / "build" / "test_mismatched_key_lock_pairs.wad"
+        compile_to_wad(load_example(), output)
+        textmap = _read_textmap(output).replace("locknumber = 2;", "locknumber = 1;")
+        _write_textmap_wad(output, textmap)
+
+        report = validate_wad(output)
+
+        self.assertFalse(report["valid"])
+        self.assertEqual(report["key_colors"], {"blue": 1})
+        self.assertEqual(report["locked_door_colors"], {"red": 1})
+        self.assertFalse(report["key_lock_pairs_valid"])
+        self.assertEqual(len(report["key_lock_pair_errors"]), 1)
+        error = dict(report["key_lock_pair_errors"][0])
+        self.assertGreaterEqual(error.pop("door_linedef"), 0)
+        self.assertEqual(error, {"locknumber": 1, "color": "red", "error": "missing_matching_key"})
 
     def test_sector_primitive_compiler_uses_rooms_and_height_feature_sectors(self) -> None:
         output = Path(__file__).resolve().parents[1] / "build" / "test_sector_primitives.wad"
