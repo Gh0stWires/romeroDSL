@@ -89,6 +89,7 @@ def validate_document(document: dict[str, Any]) -> ValidationReport:
     _validate_theme_materials(document.get("theme"), errors)
     _validate_critical_path(progression, space_ids, connection_ids, errors, warnings)
     _validate_keys_and_gates(progression, space_ids, connection_ids, secret_space_ids, errors, warnings)
+    _validate_route_gated_progression(progression, connections, errors)
     _validate_validation_contract(document.get("validation"), warnings)
 
     return ValidationReport(valid=not errors, errors=errors, warnings=warnings)
@@ -298,6 +299,113 @@ def _validate_keys_and_gates(
             warnings.append(
                 f"gate {gate_id!r} has no matching connection id; compiler may not know where it is"
             )
+
+
+def _validate_route_gated_progression(
+    progression: dict[str, Any], connections: list[Any], errors: list[str]
+) -> None:
+    start = progression.get("start")
+    exit_space = progression.get("exit")
+    if not isinstance(start, str) or not isinstance(exit_space, str):
+        return
+
+    key_locations_by_color = _key_locations_by_color(progression)
+    usable_connections = [connection for connection in connections if isinstance(connection, dict)]
+    all_reachable = _reachable_spaces(start, usable_connections, blocked_connection_indexes=set())
+    if exit_space not in all_reachable:
+        errors.append("progression.exit is not reachable from progression.start")
+
+    gates = progression.get("gates", [])
+    if not isinstance(gates, list):
+        return
+    for gate in gates:
+        if not isinstance(gate, dict):
+            continue
+        if gate.get("type") not in {"locked_door", "keyed_door"} or not bool(gate.get("required_for_exit", False)):
+            continue
+        gate_id = gate.get("id")
+        color = gate.get("key")
+        if not isinstance(gate_id, str) or color not in KEY_COLORS:
+            continue
+        gate_connection_index = _find_gate_connection_index(gate, usable_connections)
+        if gate_connection_index is None:
+            errors.append(f"required gate {gate_id!r} does not match a concrete connection")
+            continue
+
+        before_gate = _reachable_spaces(start, usable_connections, blocked_connection_indexes={gate_connection_index})
+        if not any(location in before_gate for location in key_locations_by_color.get(str(color), set())):
+            errors.append(f"{color} key is not reachable before gate {gate_id!r}")
+        if exit_space in before_gate:
+            errors.append(f"exit is reachable without gate {gate_id!r}")
+
+
+def _key_locations_by_color(progression: dict[str, Any]) -> dict[str, set[str]]:
+    locations: dict[str, set[str]] = {}
+    keys = progression.get("keys", [])
+    if not isinstance(keys, list):
+        return locations
+    for key in keys:
+        if not isinstance(key, dict):
+            continue
+        color = key.get("color")
+        location = key.get("location")
+        if isinstance(color, str) and isinstance(location, str):
+            locations.setdefault(color, set()).add(location)
+    return locations
+
+
+def _find_gate_connection_index(gate: dict[str, Any], connections: list[dict[str, Any]]) -> int | None:
+    gate_id = gate.get("id")
+    for index, connection in enumerate(connections):
+        if gate_id and connection.get("id") == gate_id:
+            return index
+
+    blocked = _parse_blocked_connection(gate.get("blocks"))
+    if blocked is None:
+        return None
+    blocked_from, blocked_to = blocked
+    for index, connection in enumerate(connections):
+        if connection.get("from") == blocked_from and connection.get("to") == blocked_to:
+            return index
+        if connection.get("from") == blocked_to and connection.get("to") == blocked_from:
+            return index
+    return None
+
+
+def _parse_blocked_connection(value: Any) -> tuple[str, str] | None:
+    if not isinstance(value, str) or "->" not in value:
+        return None
+    left, right = value.split("->", 1)
+    left = left.strip()
+    right = right.strip()
+    if not left or not right:
+        return None
+    return left, right
+
+
+def _reachable_spaces(
+    start: str, connections: list[dict[str, Any]], blocked_connection_indexes: set[int]
+) -> set[str]:
+    graph: dict[str, set[str]] = {}
+    for index, connection in enumerate(connections):
+        if index in blocked_connection_indexes:
+            continue
+        source = connection.get("from")
+        target = connection.get("to")
+        if not isinstance(source, str) or not isinstance(target, str):
+            continue
+        graph.setdefault(source, set()).add(target)
+        graph.setdefault(target, set()).add(source)
+
+    reachable: set[str] = set()
+    frontier = [start]
+    while frontier:
+        node = frontier.pop()
+        if node in reachable:
+            continue
+        reachable.add(node)
+        frontier.extend(sorted(graph.get(node, set()) - reachable))
+    return reachable
 
 
 def _validate_validation_contract(value: Any, warnings: list[str]) -> None:

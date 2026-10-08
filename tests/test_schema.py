@@ -46,6 +46,32 @@ class SchemaTests(unittest.TestCase):
         self.assertFalse(report.valid)
         self.assertTrue(any("secret space" in error for error in report.errors))
 
+    def test_required_locked_gate_must_block_exit_route(self) -> None:
+        document = load_example()
+        document["connections"].append(
+            {
+                "id": "ungated_exit_shortcut",
+                "from": "central_hub",
+                "to": "exit_room",
+                "type": "hallway",
+                "required_for_exit": False,
+            }
+        )
+
+        report = validate_document(document)
+
+        self.assertFalse(report.valid)
+        self.assertTrue(any("exit is reachable without gate 'blue_locked_door'" in error for error in report.errors))
+
+    def test_required_key_must_be_reachable_before_matching_gate(self) -> None:
+        document = load_example()
+        document["progression"]["keys"][0]["location"] = "exit_wing"
+
+        report = validate_document(document)
+
+        self.assertFalse(report.valid)
+        self.assertTrue(any("blue key is not reachable before gate 'blue_locked_door'" in error for error in report.errors))
+
     def test_invalid_space_material_fails(self) -> None:
         document = load_example()
         document["spaces"][0]["materials"] = {"wall": "NOT_A_TEXTURE"}

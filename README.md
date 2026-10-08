@@ -41,7 +41,7 @@ The v0.6 extraction layer turns RomeroGAN `graph_cache_v1` samples into canonica
 
 The first v0.7 slice converts those validated prompt-to-DSL records into chat-style supervised fine-tuning JSONL and validates every assistant output as parseable, canonical romeroDSL before training. The slim Qwen adapter can generate valid romeroDSL that compiles to a Zandronum-loadable WAD, but the current generated samples are not yet proof of broad map-design generalization.
 
-The first v0.8 slice fixes and validates concrete ZDoom keycard/lock mechanics. A reported red/blue/yellow locked door must now use a lock number that matches the exported visible keycard color, and mismatched key/lock pairs mark the WAD report invalid instead of passing as a misleading object count.
+The first v0.8 slice fixes and validates concrete ZDoom keycard/lock mechanics. A reported red/blue/yellow locked door must now use a lock number that matches the exported visible keycard color, and mismatched key/lock pairs mark the WAD report invalid instead of passing as a misleading object count. v0.8 has also started semantic route-gating checks: a required locked gate must be a concrete connection, its key must be reachable before crossing that gate, and the exit must not be reachable while that gate is blocked.
 
 ## Install for development
 
