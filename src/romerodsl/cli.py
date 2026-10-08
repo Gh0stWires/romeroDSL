@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from romerodsl.compiler import compile_to_plan, compile_to_wad
-from romerodsl.extraction import build_dsl_training_cache
+from romerodsl.extraction import audit_graph_cache, build_dsl_training_cache
 from romerodsl.finetune import build_sft_jsonl, validate_sft_jsonl
 from romerodsl.qwen_lora import SFTTrainConfig, train_qwen_lora, training_run_plan
 from romerodsl.schema import validate_document
@@ -37,6 +37,14 @@ def main(argv: list[str] | None = None) -> int:
     training_parser.add_argument("--graph-cache", type=Path, required=True)
     training_parser.add_argument("--output", "-o", type=Path, required=True)
     training_parser.add_argument("--strict-only", action="store_true")
+    training_parser.add_argument("--prompt-variants-per-sample", type=int, default=1)
+
+    audit_parser = subparsers.add_parser(
+        "audit-graph-cache",
+        help="audit full graph-cache coverage and stratification buckets",
+    )
+    audit_parser.add_argument("--graph-cache", type=Path, required=True)
+    audit_parser.add_argument("--output", "-o", type=Path)
 
     sft_parser = subparsers.add_parser(
         "build-sft-jsonl",
@@ -77,7 +85,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "export-wad":
         return _export_wad_command(args.path, args.output, args.cell_size)
     if args.command == "build-training-pairs":
-        return _build_training_pairs_command(args.graph_cache, args.output, args.strict_only)
+        return _build_training_pairs_command(
+            args.graph_cache,
+            args.output,
+            args.strict_only,
+            args.prompt_variants_per_sample,
+        )
+    if args.command == "audit-graph-cache":
+        return _audit_graph_cache_command(args.graph_cache, args.output)
     if args.command == "build-sft-jsonl":
         return _build_sft_jsonl_command(args.training_cache, args.output)
     if args.command == "validate-sft-jsonl":
@@ -117,9 +132,29 @@ def _export_wad_command(path: Path, output: Path, cell_size: int) -> int:
     return 0
 
 
-def _build_training_pairs_command(graph_cache: Path, output: Path, strict_only: bool) -> int:
-    summary = build_dsl_training_cache(graph_cache, output, strict_only=strict_only)
+def _build_training_pairs_command(
+    graph_cache: Path,
+    output: Path,
+    strict_only: bool,
+    prompt_variants_per_sample: int,
+) -> int:
+    summary = build_dsl_training_cache(
+        graph_cache,
+        output,
+        strict_only=strict_only,
+        prompt_variants_per_sample=prompt_variants_per_sample,
+    )
     print(f"wrote: {output}")
+    print(json.dumps(summary, indent=2))
+    return 0
+
+
+def _audit_graph_cache_command(graph_cache: Path, output: Path | None) -> int:
+    summary = audit_graph_cache(graph_cache)
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(summary, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+        print(f"wrote: {output}")
     print(json.dumps(summary, indent=2))
     return 0
 

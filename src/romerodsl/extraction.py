@@ -18,15 +18,21 @@ VALID_THEME_GUESSES = {"techbase", "hell"}
 
 
 def dsl_from_graph_sample(sample: dict[str, Any]) -> dict[str, Any]:
-    """Convert one WAD graph-cache sample into a valid canonical DSL document."""
+    """Convert one WAD graph-cache sample into a valid canonical DSL document.
 
-    family = str(sample.get("family") or "unknown")
-    map_name = str(sample.get("map") or "MAP01")
+    Start, exit, and a route between them are the core contract. Keyed progression
+    is only authored into the target when the source graph says a lock gates the
+    exit; optional/ambiguous key-lock observations stay in labels instead of being
+    faked into required progression.
+    """
+
     theme = _theme_from_sample(sample)
-    colors = _paired_key_lock_colors(sample)
+    colors = _required_key_lock_colors(sample)
     height_levels = _height_levels(sample)
     counts = _mapping(sample.get("counts"))
     things = _mapping(sample.get("things_by_category"))
+    family = str(sample.get("family") or "unknown")
+    map_name = str(sample.get("map") or "MAP01")
     has_height_variation = len(height_levels) > 1
     has_locked_progression = bool(colors)
 
@@ -45,7 +51,7 @@ def dsl_from_graph_sample(sample: dict[str, Any]) -> dict[str, Any]:
         "dsl_version": "0.1",
         "game": "doom2",
         "format_target": "udmf",
-        "title": f"Extracted {family} {map_name} DSL Seed",
+        "title": _title_for_sample(theme, colors, int(counts.get("sectors", 0) or 0)),
         "scale": _scale_from_sector_count(int(counts.get("sectors", 0) or 0)),
         "difficulty": _difficulty_from_monsters(int(things.get("monsters", 0) or 0)),
         "intended_playtime": "short" if int(counts.get("sectors", 0) or 0) < 64 else "medium",
@@ -103,32 +109,40 @@ def dsl_from_graph_sample(sample: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def training_record_from_graph_sample(sample: dict[str, Any], *, sample_path: str) -> dict[str, Any]:
+def training_record_from_graph_sample(
+    sample: dict[str, Any], *, sample_path: str, prompt_variant_index: int = 0
+) -> dict[str, Any]:
     """Build one prompt-to-DSL training record from a graph-cache sample."""
 
-    colors = _paired_key_lock_colors(sample)
+    required_colors = _required_key_lock_colors(sample)
+    observed_colors = _paired_key_lock_colors(sample)
     document = dsl_from_graph_sample(sample)
     counts = _mapping(sample.get("counts"))
     progression = _mapping(sample.get("progression"))
-    prompt = prompt_from_graph_sample(sample, colors)
+    prompt_variants = prompt_variants_from_graph_sample(sample)
+    prompt = prompt_variants[prompt_variant_index % len(prompt_variants)]
     strict = bool(
         progression.get("start_reaches_exit")
         and progression.get("exit_requires_any_lock")
         and counts.get("keys", 0)
         and counts.get("locked_doors", 0)
-        and colors
+        and required_colors
     )
+    bucket = _bucket_for_sample(sample)
     return {
-        "schema": "romerodsl_training_pair_v0.6",
+        "schema": "romerodsl_training_pair_v0.8",
         "source_sample": sample_path,
         "source_wad": sample.get("source_wad"),
         "family": sample.get("family"),
         "map": sample.get("map"),
         "prompt": prompt,
+        "prompt_variant_index": prompt_variant_index,
         "dsl": document,
         "labels": {
+            "bucket": bucket,
             "strict_progression_candidate": strict,
-            "colors": colors,
+            "colors": required_colors,
+            "observed_paired_colors": observed_colors,
             "theme": document["theme"]["primary"],
             "start_reaches_exit": bool(progression.get("start_reaches_exit")),
             "exit_requires_any_lock": bool(progression.get("exit_requires_any_lock")),
@@ -147,9 +161,17 @@ def training_record_from_graph_sample(sample: dict[str, Any], *, sample_path: st
     }
 
 
-def build_dsl_training_cache(graph_cache: Path, output: Path, *, strict_only: bool = False) -> dict[str, Any]:
+def build_dsl_training_cache(
+    graph_cache: Path,
+    output: Path,
+    *,
+    strict_only: bool = False,
+    prompt_variants_per_sample: int = 1,
+) -> dict[str, Any]:
     """Build a manifest and sample files of prompt-to-romeroDSL records."""
 
+    if prompt_variants_per_sample < 1:
+        raise ValueError("prompt_variants_per_sample must be at least 1")
     graph_cache = Path(graph_cache)
     output = Path(output)
     samples_dir = output / "samples"
@@ -163,8 +185,11 @@ def build_dsl_training_cache(graph_cache: Path, output: Path, *, strict_only: bo
     manifest_path = graph_cache / "manifest.jsonl"
     records = []
     color_counter: Counter[str] = Counter()
+    observed_color_counter: Counter[str] = Counter()
     theme_counter: Counter[str] = Counter()
+    bucket_counter: Counter[str] = Counter()
     strict_count = 0
+    source_count = 0
 
     for line in manifest_path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
@@ -173,68 +198,190 @@ def build_dsl_training_cache(graph_cache: Path, output: Path, *, strict_only: bo
         source_rel = str(row["sample"])
         source_path = graph_cache / source_rel
         sample = json.loads(source_path.read_text(encoding="utf-8"))
-        record = training_record_from_graph_sample(sample, sample_path=source_rel.replace("\\", "/"))
-        if strict_only and not record["labels"]["strict_progression_candidate"]:
+        base_record = training_record_from_graph_sample(sample, sample_path=source_rel.replace("\\", "/"))
+        if strict_only and not base_record["labels"]["strict_progression_candidate"]:
             continue
 
-        strict_count += int(record["labels"]["strict_progression_candidate"])
-        sample_out = samples_dir / f"dsl_{len(records):05d}.json"
-        sample_out.write_text(json.dumps(record, indent=2, allow_nan=False) + "\n", encoding="utf-8")
-        manifest_record = {
-            "path": str(sample_out.relative_to(output)).replace("\\", "/"),
-            "source_sample": record["source_sample"],
-            "prompt": record["prompt"],
-            "family": record["family"],
-            "map": record["map"],
-            "labels": record["labels"],
-            "features": record["features"],
-        }
-        records.append(manifest_record)
-        color_counter.update(record["labels"]["colors"])
-        theme_counter.update([record["labels"]["theme"]])
+        source_count += 1
+        for variant_index in range(prompt_variants_per_sample):
+            record = training_record_from_graph_sample(
+                sample,
+                sample_path=source_rel.replace("\\", "/"),
+                prompt_variant_index=variant_index,
+            )
+            strict_count += int(record["labels"]["strict_progression_candidate"])
+            sample_out = samples_dir / f"dsl_{len(records):05d}.json"
+            sample_out.write_text(json.dumps(record, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+            manifest_record = {
+                "path": str(sample_out.relative_to(output)).replace("\\", "/"),
+                "source_sample": record["source_sample"],
+                "prompt": record["prompt"],
+                "prompt_variant_index": record["prompt_variant_index"],
+                "family": record["family"],
+                "map": record["map"],
+                "labels": record["labels"],
+                "features": record["features"],
+            }
+            records.append(manifest_record)
+            color_counter.update(record["labels"]["colors"])
+            observed_color_counter.update(record["labels"].get("observed_paired_colors", []))
+            theme_counter.update([record["labels"]["theme"]])
+            bucket_counter.update([record["labels"]["bucket"]])
 
     (output / "manifest.jsonl").write_text(
         "".join(json.dumps(record, allow_nan=False) + "\n" for record in records),
         encoding="utf-8",
     )
     summary = {
-        "schema": "romerodsl_training_pair_v0.6",
+        "schema": "romerodsl_training_pair_v0.8",
         "source_graph_cache": str(graph_cache),
+        "source_samples": source_count,
         "samples": len(records),
+        "prompt_variants_per_sample": prompt_variants_per_sample,
         "strict_progression_candidates": strict_count,
         "strict_only": strict_only,
+        "bucket_counts": dict(bucket_counter),
         "color_counts": dict(color_counter),
+        "observed_color_counts": dict(observed_color_counter),
         "theme_counts": dict(theme_counter),
     }
     (output / "summary.json").write_text(json.dumps(summary, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     return summary
 
 
-def prompt_from_graph_sample(sample: dict[str, Any], colors: list[str] | None = None) -> str:
-    """Create a grounded natural-language prompt from observed graph-cache facts."""
+def audit_graph_cache(graph_cache: Path) -> dict[str, Any]:
+    """Summarize full graph-cache coverage before building SFT data."""
 
-    colors = _paired_key_lock_colors(sample) if colors is None else colors
+    graph_cache = Path(graph_cache)
+    manifest_path = graph_cache / "manifest.jsonl"
+    bucket_counter: Counter[str] = Counter()
+    theme_counter: Counter[str] = Counter()
+    observed_color_counter: Counter[str] = Counter()
+    target_color_counter: Counter[str] = Counter()
+    source_samples = 0
+    core_candidates = 0
+    start_count = 0
+    exit_count = 0
+    start_reaches_exit_count = 0
+    height_variation_count = 0
+
+    for line in manifest_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        sample = json.loads((graph_cache / str(row["sample"])).read_text(encoding="utf-8"))
+        counts = _mapping(sample.get("counts"))
+        progression = _mapping(sample.get("progression"))
+        bucket = _bucket_for_sample(sample)
+        observed_colors = _paired_key_lock_colors(sample)
+        target_colors = _required_key_lock_colors(sample)
+
+        source_samples += 1
+        start_count += int(int(counts.get("player_starts", 0) or 0) > 0 or bool(progression.get("start_sectors")))
+        exit_count += int(int(counts.get("exit_sectors", 0) or 0) > 0 or bool(progression.get("exit_sectors")))
+        start_reaches_exit = bool(progression.get("start_reaches_exit"))
+        start_reaches_exit_count += int(start_reaches_exit)
+        core_candidates += int(start_reaches_exit)
+        height_variation_count += int(len(_height_levels(sample)) > 1)
+        bucket_counter.update([bucket])
+        theme_counter.update([_theme_from_sample(sample)])
+        observed_color_counter.update(observed_colors)
+        target_color_counter.update(target_colors)
+
+    return {
+        "schema": "romerodsl_graph_cache_audit_v0.8",
+        "source_graph_cache": str(graph_cache),
+        "source_samples": source_samples,
+        "samples_with_start": start_count,
+        "samples_with_exit": exit_count,
+        "start_reaches_exit": start_reaches_exit_count,
+        "core_start_exit_route_candidates": core_candidates,
+        "height_variation": height_variation_count,
+        "bucket_counts": dict(bucket_counter),
+        "theme_counts": dict(theme_counter),
+        "observed_color_counts": dict(observed_color_counter),
+        "target_required_color_counts": dict(target_color_counter),
+    }
+
+
+def prompt_from_graph_sample(sample: dict[str, Any], colors: list[str] | None = None) -> str:
+    """Create the default grounded natural-language prompt from observed facts."""
+
+    if colors is None:
+        return prompt_variants_from_graph_sample(sample, variant_count=1)[0]
+    return _prompt_variant(sample, colors=colors, style=0)
+
+
+def prompt_variants_from_graph_sample(sample: dict[str, Any], *, variant_count: int = 4) -> list[str]:
+    """Create deterministic, user-style prompts grounded in source-map facts.
+
+    The variants make the core level requirement explicit: one player start, one
+    exit, and a route between them. Keys/locks are requested only when the source
+    provides required exit-gating evidence.
+    """
+
+    if variant_count < 1:
+        raise ValueError("variant_count must be at least 1")
+    colors = _required_key_lock_colors(sample)
+    variants = [_prompt_variant(sample, colors=colors, style=style) for style in range(4)]
+    return [variants[index % len(variants)] for index in range(variant_count)]
+
+
+def _prompt_variant(sample: dict[str, Any], *, colors: list[str], style: int) -> str:
     counts = _mapping(sample.get("counts"))
     things = _mapping(sample.get("things_by_category"))
     theme = _theme_from_sample(sample)
-    parts = ["make a Doom map"]
-    if theme != "unknown":
-        parts.append(f"with a {theme} theme")
-    sector_count = int(counts.get("sectors", 0) or 0)
-    if sector_count:
-        parts.append(f"with a {_scale_from_sector_count(sector_count)} connected room layout")
-    for color in colors:
-        parts.append(f"with a {color} key before a {color} locked door")
+    scale = _scale_from_sector_count(int(counts.get("sectors", 0) or 0))
     monster_bucket = _density_bucket(int(things.get("monsters", 0) or 0), 8, 40)
-    if monster_bucket != "none":
-        parts.append(f"with {monster_bucket} monster encounters")
-    if things.get("weapons", 0) or things.get("ammunitions", 0) or things.get("powerups", 0):
-        parts.append("with weapons ammo and health supplies")
-    if len(_height_levels(sample)) > 1:
-        parts.append("with height changes")
-    if _mapping(sample.get("progression")).get("exit_requires_any_lock"):
-        parts.append("where progression gates the exit")
-    return ", ".join(parts)
+    has_supplies = bool(things.get("weapons", 0) or things.get("ammunitions", 0) or things.get("powerups", 0))
+    has_height = len(_height_levels(sample)) > 1
+    combat_phrase = f"{monster_bucket} monster pressure" if monster_bucket != "none" else "low combat"
+    supply_phrase = "with weapons, ammo, and health" if has_supplies else "with sparse supplies"
+    height_phrase = " and height changes" if has_height else ""
+
+    if colors:
+        keyed_phrase = " then ".join(f"{color} key" for color in colors)
+        lock_phrase = " then ".join(f"{color} locked door" for color in colors)
+        if style == 1:
+            return (
+                f"create a {scale} {theme} Doom II level with one player start and one exit, "
+                f"where progression requires {keyed_phrase} before {lock_phrase}, {combat_phrase}{height_phrase}"
+            )
+        if style == 2:
+            return (
+                f"build a {theme} map with a playable route from start to exit, "
+                f"gated by matching {'/'.join(colors)} key and locked-door stages, {supply_phrase}"
+            )
+        if style == 3:
+            return (
+                f"make a Doom map that has exactly one start and one exit, a {scale} connected layout, "
+                f"and required {' then '.join(colors)} key progression on the main route"
+            )
+        return (
+            f"make a Doom map with a {theme} theme, with a {scale} connected room layout, "
+            f"with {', '.join(f'a {color} key before a {color} locked door' for color in colors)}, "
+            f"with {combat_phrase}, {supply_phrase}, where progression gates the exit"
+        )
+
+    if style == 1:
+        return (
+            f"create a {scale} {theme} Doom II map with exactly one player start, one exit, "
+            f"a clear route between them, and no locked doors"
+        )
+    if style == 2:
+        return (
+            f"build a short {theme} level where the player can reach the exit without collecting keys, "
+            f"using {combat_phrase}{height_phrase}"
+        )
+    if style == 3:
+        return (
+            f"make a valid Doom level with a start room, an exit room, connected spaces, "
+            f"no required key gates, and {supply_phrase}"
+        )
+    return (
+        f"make a Doom map with a {theme} theme, with a {scale} connected room layout, "
+        f"with one player start and one exit, with no locked doors, with {combat_phrase}, {supply_phrase}"
+    )
 
 
 def _spaces_for_sample(
@@ -371,6 +518,36 @@ def _paired_key_lock_colors(sample: dict[str, Any]) -> list[str]:
             KEY_COLOR_ORDER.index(color),
         ),
     )
+
+
+def _required_key_lock_colors(sample: dict[str, Any]) -> list[str]:
+    progression = _mapping(sample.get("progression"))
+    if not progression.get("exit_requires_any_lock"):
+        return []
+    return _paired_key_lock_colors(sample)
+
+
+def _bucket_for_sample(sample: dict[str, Any]) -> str:
+    counts = _mapping(sample.get("counts"))
+    progression = _mapping(sample.get("progression"))
+    required_colors = _required_key_lock_colors(sample)
+    observed_colors = _paired_key_lock_colors(sample)
+    if len(required_colors) >= 2:
+        return "required_multi_lock"
+    if len(required_colors) == 1:
+        return "required_single_lock"
+    if observed_colors or int(counts.get("locked_doors", 0) or 0) or int(counts.get("keys", 0) or 0):
+        return "optional_key_lock"
+    if progression.get("start_reaches_exit"):
+        return "basic_route"
+    return "layout_style_only"
+
+
+def _title_for_sample(theme: str, colors: list[str], sector_count: int) -> str:
+    scale = _scale_from_sector_count(sector_count)
+    if colors:
+        return f"{scale.title()} {theme.title()} Key Route"
+    return f"{scale.title()} {theme.title()} Route"
 
 
 def _theme_from_sample(sample: dict[str, Any]) -> str:

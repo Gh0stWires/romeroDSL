@@ -14,7 +14,7 @@ This keeps room topology, height/elevation, and key progression as first-class l
 
 ## Current status
 
-This is v0.8-pre: a GitHub-ready foundation plus a first Qwen LoRA proof-of-learning and the beginning of stricter playability validation. The v0.7 adapter proved that `prompt -> romeroDSL -> WAD` can work mechanically, but v0.8 deliberately raises the bar: a reported key/door pair must now match concrete ZDoom keycard and lock mechanics, and later v0.8 work will validate real route-gated progression instead of object counts alone.
+This is v0.8-pre: a GitHub-ready foundation plus a first Qwen LoRA proof-of-learning and a stricter no-repair training rebuild. The v0.7 adapter proved that `prompt -> romeroDSL -> WAD` can work mechanically, but v0.8 deliberately raises the bar: a reported key/door pair must match concrete ZDoom keycard and lock mechanics, route-gated progression must be semantic rather than object-count based, and the next adapter is trained from the full graph cache instead of the old 998-example strict-key subset.
 
 The package currently contains:
 
@@ -31,13 +31,15 @@ The package currently contains:
 - a minimal dependency-free UDMF/PWAD exporter
 - unit tests
 - graph-cache extraction into canonical prompt-to-romeroDSL training pairs
-- chat-style v0.7 SFT export/validation helpers
+- full graph-cache audit and v0.8 stratified buckets for no-lock, optional-lock, single-lock, multi-lock, and layout/style-only samples
+- robust prompt variants that make start/exit universal while keeping keys/locks prompt-conditioned
+- chat-style v0.7/v0.8 SFT export/validation helpers
 - a Qwen2.5-Coder LoRA training harness
 - v0.8 WAD validation that reports concrete key colors, locked-door colors, and mismatched key/lock pairs
 
 The v0.5 WAD exporter uses real room sectors, corridor sectors, tagged door sectors, chamfered irregular-room boundaries, and intra-room height-feature sectors for pillars, stair-access platforms, and stair-escape pits. It resolves semantic material declarations into concrete Doom II flats/textures, rejects missing visible surface textures that can create hall-of-mirrors artifacts in Zandronum, rejects crossing linedefs, and avoids placing actors/items inside blocking height features.
 
-The v0.6 extraction layer turns RomeroGAN `graph_cache_v1` samples into canonical prompt-to-DSL records. It preserves source metadata, prompt text, theme/scale hints, paired key-lock colors, strict progression labels, height-variation labels, and a valid DSL document that can be validated and compiled by this package. This is the bridge toward the next LoRA target: `prompt -> romeroDSL`, not `prompt -> raw raster`.
+The v0.6/v0.8 extraction layer turns RomeroGAN `graph_cache_v1` samples into canonical prompt-to-DSL records. v0.8 no longer treats keyed progression as the default level contract: it audits the full cache, emits stratified buckets, creates multiple grounded prompt phrasings per source map, and keeps keys/locks out of the assistant target unless the source graph has required exit-gating evidence. The universal target is a valid start, exit, and connected route; what happens between them is controlled by the prompt.
 
 The first v0.7 slice converts those validated prompt-to-DSL records into chat-style supervised fine-tuning JSONL and validates every assistant output as parseable, canonical romeroDSL before training. The slim Qwen adapter can generate valid romeroDSL that compiles to a Zandronum-loadable WAD, but the current generated samples are not yet proof of broad map-design generalization.
 
@@ -79,51 +81,61 @@ python -m romerodsl compile examples/blue_lock_processing.json --output build/bl
 
 The emitted plan is a debug bridge between semantic authorship and UDMF/WAD export.
 
-## Build prompt-to-DSL training pairs
+## Audit and build prompt-to-DSL training pairs
+
+Audit the full graph cache before training so the dataset shape is explicit:
+
+```bash
+python -m romerodsl audit-graph-cache \
+  --graph-cache C:/Users/gh0st/Documents/RomeroGan/romerogan_v2/data/graph_cache_v1 \
+  --output build/v08_full_dataset_audit.json
+```
+
+Build the v0.8 full-dataset cache with prompt variants instead of the old strict-key-only slice:
 
 ```bash
 python -m romerodsl build-training-pairs \
   --graph-cache C:/Users/gh0st/Documents/RomeroGan/romerogan_v2/data/graph_cache_v1 \
-  --output build/v06_dsl_training_pairs \
-  --strict-only
+  --output build/v08_full_dsl_training_pairs \
+  --prompt-variants-per-sample 4
 ```
 
 The command writes:
 
-- `manifest.jsonl` with prompt, labels, features, and sample path
-- `summary.json` with sample/theme/color counts
+- `manifest.jsonl` with prompt, prompt variant, labels, features, and sample path
+- `summary.json` with sample/theme/color/bucket counts
 - `samples/dsl_*.json` training records containing `{prompt, dsl, labels, features}`
 
-`--strict-only` keeps samples where the graph cache says the start reaches the exit, keys and locked doors exist, and at least one lock gates exit progression.
+`--strict-only` is now only for reproducing the older keyed-progression subset. The v0.8 default uses the full graph cache and buckets samples by what they can honestly supervise: `basic_route`, `optional_key_lock`, `required_single_lock`, `required_multi_lock`, and `layout_style_only`. Start, exit, and a playable route are the core generated contract; keys and locks are only placed in the assistant target when the source graph says a lock gates exit progression.
 
-## Build v0.7 supervised fine-tuning JSONL
+## Build v0.8 supervised fine-tuning JSONL
 
 ```bash
 python -m romerodsl build-sft-jsonl \
-  --training-cache build/v06_dsl_training_pairs \
-  --output build/v07_sft/romerodsl_sft_v07.jsonl
+  --training-cache build/v08_full_dsl_training_pairs \
+  --output build/v08_sft/romerodsl_sft_v08_full.jsonl
 
-python -m romerodsl validate-sft-jsonl build/v07_sft/romerodsl_sft_v07.jsonl
+python -m romerodsl validate-sft-jsonl build/v08_sft/romerodsl_sft_v08_full.jsonl
 ```
 
-The SFT file uses chat-style records with a system instruction, the user prompt, and an assistant response that is only the canonical DSL JSON object. `validate-sft-jsonl` reparses every assistant response and runs `validate_document()` before the file is considered trainable.
+The SFT file uses chat-style records with a system instruction, the user prompt, and an assistant response that is only the canonical DSL JSON object. `validate-sft-jsonl` reparses every assistant response and runs `validate_document()` before the file is considered trainable. The assistant target omits source-WAD provenance, raw source height arrays, and extracted source titles, so the model learns the authored level contract instead of memorizing seed names.
 
-## Train v0.7 Qwen LoRA adapter
+## Train v0.8 Qwen LoRA adapter
 
-The first training target is `Qwen/Qwen2.5-Coder-1.5B-Instruct` because romeroDSL is strict JSON/code-like output and the 1.5B model is small enough for fast local iteration.
+The first training target is `Qwen/Qwen2.5-Coder-1.5B-Instruct` because romeroDSL is strict JSON/code-like output and the 1.5B model is small enough for local iteration.
 
 ```bash
 python -m romerodsl train-qwen-lora \
-  --sft-jsonl build/v07_sft/romerodsl_sft_v07.jsonl \
-  --output runs/qwen2p5_coder_1p5b_v07_slim \
-  --max-length 3072 \
+  --sft-jsonl build/v08_sft/romerodsl_sft_v08_full.jsonl \
+  --output runs/qwen2p5_coder_1p5b_v08_full \
+  --max-length 2400 \
   --batch-size 1 \
   --gradient-accumulation-steps 8 \
   --epochs 1 \
   --learning-rate 0.0002
 ```
 
-The trainer writes `train_config.json`, `metrics.json`, periodic `adapter-step-*` checkpoints, and the final LoRA adapter under `runs/qwen2p5_coder_1p5b_v07_slim/adapter`. The v0.7 SFT target intentionally omits bulky source-WAD provenance fields such as raw `source_height_levels`; those stay in record metadata, not in the model's JSON response.
+The trainer writes `train_config.json`, `metrics.json`, periodic `adapter-step-*` checkpoints, and the final LoRA adapter under the output directory. The v0.8 target uses the full graph cache plus prompt variants and intentionally includes no-lock/basic-route prompts so the model learns that only start, exit, and a connected route are universal. Keys, locked doors, multi-key gates, combat, resources, and height changes are prompt-conditioned features, not mandatory defaults.
 
 ## Design goals
 
@@ -152,7 +164,7 @@ The compiler may make valid geometry from those decisions, but it should not inv
 5. v0.5: Improve geometry authorship: polygonal/irregular rooms, doorway cutouts, stairs, safer monster/item placement, and deeper engine playtesting. Lift specials are deferred until the compiler has a namespace-verified mover model instead of a guessed action number.
 6. v0.6: Extract real WAD graph caches into canonical prompt-to-DSL training pairs.
 7. v0.7: LoRA fine-tune target: `prompt -> romeroDSL`.
-8. v0.8: Stricter playability validation: concrete ZDoom key/lock mechanics, route-gated progression checks, template-leak detection, and multi-prompt evaluation before retraining.
+8. v0.8: Stricter playability validation: concrete ZDoom key/lock mechanics, route-gated progression checks, template-leak detection, multi-prompt evaluation, full-dataset stratified SFT rebuild, and no-repair retraining.
 
 ## Repository layout
 
