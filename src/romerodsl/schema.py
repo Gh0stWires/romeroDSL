@@ -221,6 +221,8 @@ def _validate_connections(connections: list[Any], space_ids: set[str], errors: l
             errors.append(f"connections[{index}].from references unknown space {from_id!r}")
         if to_id not in space_ids:
             errors.append(f"connections[{index}].to references unknown space {to_id!r}")
+        if isinstance(from_id, str) and isinstance(to_id, str) and from_id == to_id:
+            errors.append(f"connections[{index}] is a self-connection from {from_id!r} to itself")
 
         connection_type = connection.get("type")
         if connection_type in {"locked_door", "keyed_door"}:

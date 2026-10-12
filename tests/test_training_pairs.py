@@ -112,6 +112,16 @@ class ExtractionTests(unittest.TestCase):
         )
         self.assertIn("locked_doors_are_partition_edges", document["validation"]["required"])
 
+    def test_multi_key_training_dsl_has_no_self_connections_or_fake_route_ids(self) -> None:
+        document = dsl_from_graph_sample(progression_sample())
+        connections = document["connections"]
+        connection_ids = {connection["id"] for connection in connections}
+
+        self.assertTrue(all(connection["from"] != connection["to"] for connection in connections))
+        self.assertNotIn("red_key_route", connection_ids)
+        self.assertNotIn("red_key_route", document["progression"]["critical_path"])
+        self.assertIn("red_key_room", document["progression"]["critical_path"])
+
     def test_training_record_preserves_prompt_source_labels_and_valid_dsl(self) -> None:
         record = training_record_from_graph_sample(progression_sample(), sample_path="samples/example_MAP06.json")
 

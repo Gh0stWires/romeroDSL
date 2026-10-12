@@ -162,13 +162,42 @@ def template_similarity_report(generated: dict[str, Any], template: dict[str, An
     generated_key_colors = _key_colors(generated.get("progression"))
     template_key_colors = _key_colors(template.get("progression"))
 
+    generated_roles = _field_values(generated.get("spaces"), "role")
+    template_roles = _field_values(template.get("spaces"), "role")
+    generated_shapes = _field_values(generated.get("spaces"), "shape")
+    template_shapes = _field_values(template.get("spaces"), "shape")
+    generated_theme = _theme_primary(generated.get("theme"))
+    template_theme = _theme_primary(template.get("theme"))
+
     space_overlap = _jaccard(generated_spaces, template_spaces)
     connection_overlap = _jaccard(generated_connections, template_connections)
     key_color_overlap = _jaccard(generated_key_colors, template_key_colors)
+    role_overlap = _jaccard(generated_roles, template_roles)
+    shape_overlap = _jaccard(generated_shapes, template_shapes)
+    theme_overlap = 1.0 if generated_theme and generated_theme == template_theme else 0.0
+    space_count_similarity = _count_similarity(len(generated_spaces), len(template_spaces))
+    connection_count_similarity = _count_similarity(len(generated_connections), len(template_connections))
+    gate_count_similarity = _count_similarity(
+        len((generated.get("progression") or {}).get("gates") or []),
+        len((template.get("progression") or {}).get("gates") or []),
+    )
     copied_title = str(generated.get("title", "")).strip().lower() == str(template.get("title", "")).strip().lower()
     source_seed_title = "extracted" in str(generated.get("title", "")).lower() and "seed" in str(generated.get("title", "")).lower()
-    score = (space_overlap + connection_overlap + key_color_overlap + (1.0 if copied_title else 0.0)) / 4.0
-    if score >= 0.75 or source_seed_title:
+
+    # Lexical leakage catches exact copied titles/ids. Structural leakage catches the
+    # case that matters visually: different ids/colors, but the same room-role and
+    # room-shape skeleton compiled into a near-identical map.
+    lexical_score = (space_overlap + connection_overlap + key_color_overlap + (1.0 if copied_title else 0.0)) / 4.0
+    structural_score = (
+        role_overlap
+        + shape_overlap
+        + theme_overlap
+        + space_count_similarity
+        + connection_count_similarity
+        + gate_count_similarity
+    ) / 6.0
+    score = max(lexical_score, structural_score)
+    if score >= 0.65 or source_seed_title:
         label = "high"
     elif score >= 0.4:
         label = "medium"
@@ -177,10 +206,18 @@ def template_similarity_report(generated: dict[str, Any], template: dict[str, An
     return {
         "template_similarity": label,
         "template_similarity_score": round(score, 3),
+        "template_lexical_score": round(lexical_score, 3),
+        "template_structural_score": round(structural_score, 3),
         "copied_source_title": copied_title or source_seed_title,
         "space_id_overlap": round(space_overlap, 3),
         "connection_id_overlap": round(connection_overlap, 3),
         "key_color_overlap": round(key_color_overlap, 3),
+        "role_overlap": round(role_overlap, 3),
+        "shape_overlap": round(shape_overlap, 3),
+        "theme_overlap": round(theme_overlap, 3),
+        "space_count_similarity": round(space_count_similarity, 3),
+        "connection_count_similarity": round(connection_count_similarity, 3),
+        "gate_count_similarity": round(gate_count_similarity, 3),
         "generated_space_ids": sorted(generated_spaces),
         "generated_connection_ids": sorted(generated_connections),
         "generated_key_colors": sorted(generated_key_colors),
@@ -214,6 +251,28 @@ def _key_colors(progression: Any) -> set[str]:
     if not isinstance(progression, dict) or not isinstance(progression.get("keys"), list):
         return set()
     return {key["color"] for key in progression["keys"] if isinstance(key, dict) and isinstance(key.get("color"), str)}
+
+
+def _field_values(value: Any, field: str) -> set[str]:
+    if not isinstance(value, list):
+        return set()
+    return {item[field] for item in value if isinstance(item, dict) and isinstance(item.get(field), str)}
+
+
+def _theme_primary(value: Any) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    primary = value.get("primary")
+    return primary if isinstance(primary, str) else None
+
+
+def _count_similarity(left: int, right: int) -> float:
+    if left == right == 0:
+        return 1.0
+    maximum = max(left, right)
+    if maximum == 0:
+        return 0.0
+    return max(0.0, 1.0 - abs(left - right) / maximum)
 
 
 def _jaccard(left: set[str], right: set[str]) -> float:

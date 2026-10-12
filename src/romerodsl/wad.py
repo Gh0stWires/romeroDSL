@@ -419,20 +419,26 @@ def _count_key_colors(things: list[dict[str, Any]]) -> dict[str, int]:
 def _locked_door_color_report(
     door_line_entries: list[tuple[int, dict[str, Any]]], key_colors: dict[str, int]
 ) -> tuple[dict[str, int], list[dict[str, Any]]]:
-    locked_door_colors: dict[str, int] = {}
+    locked_door_tags_by_color: dict[str, set[int]] = {}
     errors: list[dict[str, Any]] = []
+    seen_tags: set[int] = set()
     for line_index, line in door_line_entries:
         lock_number = line.get("locknumber", 0)
         if lock_number <= 0:
             continue
+        tag = line.get("arg0", 0)
+        tag_id = int(tag) if isinstance(tag, int) and tag > 0 else line_index
+        if tag_id in seen_tags:
+            continue
+        seen_tags.add(tag_id)
         color = DOOR_LOCK_NUMBER_COLORS.get(lock_number)
         if color is None:
             errors.append({"door_linedef": line_index, "locknumber": lock_number, "error": "unknown_locknumber"})
             continue
-        locked_door_colors[color] = locked_door_colors.get(color, 0) + 1
+        locked_door_tags_by_color.setdefault(color, set()).add(tag_id)
         if key_colors.get(color, 0) <= 0:
             errors.append({"door_linedef": line_index, "locknumber": lock_number, "color": color, "error": "missing_matching_key"})
-    return dict(sorted(locked_door_colors.items())), errors
+    return {color: len(tags) for color, tags in sorted(locked_door_tags_by_color.items())}, errors
 
 
 def _missing_visible_textures(

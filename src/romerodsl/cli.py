@@ -72,8 +72,12 @@ def main(argv: list[str] | None = None) -> int:
     train_parser.add_argument("--learning-rate", type=float, default=2e-4)
     train_parser.add_argument("--epochs", type=float, default=1.0)
     train_parser.add_argument("--max-steps", type=int)
+    train_parser.add_argument("--validation-fraction", type=float, default=0.08)
+    train_parser.add_argument("--eval-every-steps", type=int, default=25)
+    train_parser.add_argument("--save-every-steps", type=int, default=50)
     train_parser.add_argument("--lora-rank", type=int, default=16)
     train_parser.add_argument("--lora-alpha", type=int, default=32)
+    train_parser.add_argument("--load-in-4bit", action="store_true")
     train_parser.add_argument("--plan-only", action="store_true")
 
     args = parser.parse_args(argv)
@@ -183,8 +187,12 @@ def _train_qwen_lora_command(args: argparse.Namespace) -> int:
         learning_rate=args.learning_rate,
         epochs=args.epochs,
         max_steps=args.max_steps,
+        validation_fraction=args.validation_fraction,
+        eval_every_steps=args.eval_every_steps,
+        save_every_steps=args.save_every_steps,
         lora_rank=args.lora_rank,
         lora_alpha=args.lora_alpha,
+        load_in_4bit=args.load_in_4bit,
     )
     if args.plan_only:
         print(json.dumps(training_run_plan(config), indent=2))

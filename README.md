@@ -14,7 +14,11 @@ This keeps room topology, height/elevation, and key progression as first-class l
 
 ## Current status
 
-This is v0.8-pre: a GitHub-ready foundation plus a first Qwen LoRA proof-of-learning and a stricter no-repair training rebuild. The v0.7 adapter proved that `prompt -> romeroDSL -> WAD` can work mechanically, but v0.8 deliberately raises the bar: a reported key/door pair must match concrete ZDoom keycard and lock mechanics, route-gated progression must be semantic rather than object-count based, and the next adapter is trained from the full graph cache instead of the old 998-example strict-key subset.
+This is v0.10-pre: a GitHub-ready semantic Doom DSL pipeline plus early no-repair model-training experiments. The compiler/validator path is solid enough to prove hand-authored maps with real rooms, keyed progression, BFG rewards, material validation, and UDMF/WAD export. The model path is improving, but it is not yet a solved `prompt -> playable WAD` system.
+
+The current best training run is the clean Gemma 4 E4B 4-bit QLoRA adapter at `runs/gemma4_e4b_v10_light_clean/adapter`. It trained on the rebuilt Gemma-light SFT set after fixing the multi-key self-connection bug and adding quality gates for self-connections, invalid materials, missing `spaces`, and route bypasses. The run completed 100 steps with final train loss `0.01657` and validation loss `0.01367` on the canonical SFT distribution.
+
+The latest no-repair Gemma eval is a partial success, not a pass: raw generation produced valid JSON and followed several prompt intents, but failed romeroDSL validation because it created a red locked gate without declaring a matching red key in `progression.keys`. It also collapsed an eight-room request to six spaces, so no WAD was compiled. This means the current blocker has moved from syntax/JSON format to complete prompt intent: requested key colors, matching keys/gates, and explicit room-count obedience.
 
 The package currently contains:
 
@@ -34,8 +38,10 @@ The package currently contains:
 - full graph-cache audit and v0.8 stratified buckets for no-lock, optional-lock, single-lock, multi-lock, and layout/style-only samples
 - robust prompt variants that make start/exit universal while keeping keys/locks prompt-conditioned
 - chat-style v0.7/v0.8 SFT export/validation helpers
-- a Qwen2.5-Coder LoRA training harness
+- a Qwen2.5-Coder LoRA training harness generalized enough to run Gemma 4 E4B 4-bit QLoRA
 - v0.8 WAD validation that reports concrete key colors, locked-door colors, and mismatched key/lock pairs
+- Gemma-light SFT builder quality gates for self-connections, invalid materials, missing `spaces`, and route bypasses
+- no-repair Gemma zero-shot, one-shot, checkpoint, and final-adapter eval scripts
 
 The v0.5 WAD exporter uses real room sectors, corridor sectors, tagged door sectors, chamfered irregular-room boundaries, and intra-room height-feature sectors for pillars, stair-access platforms, and stair-escape pits. It resolves semantic material declarations into concrete Doom II flats/textures, rejects missing visible surface textures that can create hall-of-mirrors artifacts in Zandronum, rejects crossing linedefs, and avoids placing actors/items inside blocking height features.
 
@@ -44,6 +50,8 @@ The v0.6/v0.8 extraction layer turns RomeroGAN `graph_cache_v1` samples into can
 The first v0.7 slice converts those validated prompt-to-DSL records into chat-style supervised fine-tuning JSONL and validates every assistant output as parseable, canonical romeroDSL before training. The slim Qwen adapter can generate valid romeroDSL that compiles to a Zandronum-loadable WAD, but the current generated samples are not yet proof of broad map-design generalization.
 
 The first v0.8 slice fixes and validates concrete ZDoom keycard/lock mechanics. A reported red/blue/yellow locked door must now use a lock number that matches the exported visible keycard color, and mismatched key/lock pairs mark the WAD report invalid instead of passing as a misleading object count. v0.8 has also started semantic route-gating checks: a required locked gate must be a concrete connection, its key must be reachable before crossing that gate, and the exit must not be reachable while that gate is blocked.
+
+The v0.9/v0.10 Gemma-light work uses `google/gemma-4-E4B-it` as a stronger planner/DSL generator candidate. Zero-shot Gemma showed promising semantic planning but failed strict JSON. One-shot Gemma produced valid JSON but invalid romeroDSL due unsupported material names and a route bypass. The clean v0.10 QLoRA run fixed the dataset self-connection contamination and successfully learned the compact canonical JSON style; the remaining failure is higher-level prompt completion, especially declaring every requested key and preserving explicit room counts.
 
 ## Install for development
 
@@ -122,7 +130,7 @@ The SFT file uses chat-style records with a system instruction, the user prompt,
 
 ## Train v0.8 Qwen LoRA adapter
 
-The first training target is `Qwen/Qwen2.5-Coder-1.5B-Instruct` because romeroDSL is strict JSON/code-like output and the 1.5B model is small enough for local iteration.
+The first training target was `Qwen/Qwen2.5-Coder-1.5B-Instruct` because romeroDSL is strict JSON/code-like output and the 1.5B model is small enough for local iteration.
 
 ```bash
 python -m romerodsl train-qwen-lora \
@@ -136,6 +144,38 @@ python -m romerodsl train-qwen-lora \
 ```
 
 The trainer writes `train_config.json`, `metrics.json`, periodic `adapter-step-*` checkpoints, and the final LoRA adapter under the output directory. The v0.8 target uses the full graph cache plus prompt variants and intentionally includes no-lock/basic-route prompts so the model learns that only start, exit, and a connected route are universal. Keys, locked doors, multi-key gates, combat, resources, and height changes are prompt-conditioned features, not mandatory defaults.
+
+## Train Gemma 4 E4B light QLoRA adapter
+
+The stronger local planner candidate is `google/gemma-4-E4B-it`. On the local 12GB RTX 4070 setup, use 4-bit QLoRA rather than BF16 LoRA with CPU/meta offload.
+
+Build the compact, quality-gated Gemma-light SFT subset:
+
+```bash
+python scripts/build_gemma_light_sft.py
+```
+
+Then train with the Gemma-capable LoRA harness:
+
+```bash
+python -m romerodsl train-qwen-lora \
+  --sft-jsonl build/v09_gemma_sft/romerodsl_sft_gemma_light.jsonl \
+  --output runs/gemma4_e4b_v10_light_clean \
+  --model google/gemma-4-E4B-it \
+  --max-length 2500 \
+  --batch-size 1 \
+  --gradient-accumulation-steps 4 \
+  --max-steps 100 \
+  --validation-fraction 0.02 \
+  --eval-every-steps 50 \
+  --save-every-steps 25 \
+  --learning-rate 0.0001 \
+  --lora-rank 8 \
+  --lora-alpha 16 \
+  --load-in-4bit
+```
+
+The known clean run completed successfully with 3,508 SFT records, 3,438 train records, 70 validation records, and final validation loss `0.01367`. Low loss here means the adapter learned the compact canonical SFT distribution; it does not by itself prove free-generation quality. After training, evaluate with no repair: raw text must parse as JSON, pass `validate_document()`, compile to WAD, and pass WAD validation before the adapter counts as useful.
 
 ## Design goals
 
@@ -165,6 +205,9 @@ The compiler may make valid geometry from those decisions, but it should not inv
 6. v0.6: Extract real WAD graph caches into canonical prompt-to-DSL training pairs.
 7. v0.7: LoRA fine-tune target: `prompt -> romeroDSL`.
 8. v0.8: Stricter playability validation: concrete ZDoom key/lock mechanics, route-gated progression checks, template-leak detection, multi-prompt evaluation, full-dataset stratified SFT rebuild, and no-repair retraining.
+9. v0.9: Gemma 4 E4B no-repair zero-shot/one-shot experiments and light QLoRA setup. This phase proved Gemma has stronger semantic planning than the earlier Qwen slice, but raw zero-shot/one-shot output was still invalid under the DSL contract.
+10. v0.10: Clean Gemma-light rebuild after fixing multi-key self-connections and adding SFT quality gates. The final clean adapter emits valid JSON and follows the BFG/yellow-gate route better, but still fails strict DSL when it omits a requested red key and collapses explicit eight-room prompts to six spaces.
+11. Next: tighten no-repair eval for requested key colors and requested room counts, add more varied eight-room/multi-key golden examples, rebuild SFT, and run a targeted shorter fine-tune before moving on to richer geometry layers.
 
 ## Repository layout
 
@@ -175,7 +218,13 @@ src/romerodsl/             Python package
   compiler.py              Abstract geometry-plan compiler
   extraction.py            Graph-cache to prompt-to-DSL training-pair extraction
   finetune.py              v0.7 SFT JSONL build/validation helpers
-  qwen_lora.py             v0.7 Qwen LoRA training harness
+  qwen_lora.py             Qwen/Gemma LoRA and 4-bit QLoRA training harness
+  evaluation.py            No-repair generation, prompt-intent, and template-similarity helpers
   cli.py                   Command line interface
+scripts/
+  build_gemma_light_sft.py                 Quality-gated Gemma-light SFT subset builder
+  generate_gemma4_e4b_zero_shot.py         Gemma zero-shot no-repair eval
+  generate_gemma4_e4b_one_shot.py          Gemma one-shot no-repair eval
+  generate_gemma4_e4b_lora_checkpoint.py   Gemma adapter no-repair eval
 tests/                     Unit tests
 ```

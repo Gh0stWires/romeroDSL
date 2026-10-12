@@ -3,9 +3,17 @@ from __future__ import annotations
 import json
 import unittest
 from pathlib import Path
+from typing import Any
 
 from romerodsl.compiler import _place_rooms, compile_to_layout, compile_to_plan, compile_to_wad
-from romerodsl.geometry import _box_to_rect, _pillar_rects, build_geometry_textmap
+from romerodsl.geometry import (
+    UdmfBuilder,
+    _add_connection,
+    _box_to_rect,
+    _connection_portals,
+    _pillar_rects,
+    build_geometry_textmap,
+)
 from romerodsl.schema import validate_document
 from romerodsl.wad import (
     DOOR_LOCK_NUMBERS,
@@ -72,6 +80,17 @@ class SchemaTests(unittest.TestCase):
         self.assertFalse(report.valid)
         self.assertTrue(any("blue key is not reachable before gate 'blue_locked_door'" in error for error in report.errors))
 
+    def test_self_connection_fails(self) -> None:
+        document = load_example()
+        document["connections"].append(
+            {"id": "fake_route", "from": "central_hub", "to": "central_hub", "type": "doorway"}
+        )
+
+        report = validate_document(document)
+
+        self.assertFalse(report.valid)
+        self.assertTrue(any("self-connection" in error for error in report.errors))
+
     def test_invalid_space_material_fails(self) -> None:
         document = load_example()
         document["spaces"][0]["materials"] = {"wall": "NOT_A_TEXTURE"}
@@ -87,6 +106,90 @@ class SchemaTests(unittest.TestCase):
         # validation while failing actual play: the visible key cannot open it.
         self.assertEqual(KEY_COLOR_THING_TYPES, {"blue": 5, "red": 13, "yellow": 6})
         self.assertEqual(DOOR_LOCK_NUMBERS, {"red": 1, "blue": 2, "yellow": 3})
+
+    def test_connection_portals_stay_on_room_boundaries_when_rooms_are_offset(self) -> None:
+        source = (0, -512, 512, 0)
+        target = (1024, -2048, 1536, -1536)
+
+        def assert_on_boundary(rect: tuple[int, int, int, int], side: str, point: tuple[int, int], opening: Any) -> None:
+            x1, y1, x2, y2 = rect
+            px, py = point
+            if side in {"left", "right"}:
+                self.assertIn(px, {x1, x2})
+                self.assertTrue(y1 <= py <= y2)
+                self.assertTrue(y1 <= opening.start <= y2)
+                self.assertTrue(y1 <= opening.end <= y2)
+            else:
+                self.assertIn(py, {y1, y2})
+                self.assertTrue(x1 <= px <= x2)
+                self.assertTrue(x1 <= opening.start <= x2)
+                self.assertTrue(x1 <= opening.end <= x2)
+
+        source_side, target_side, source_point, target_point, source_opening, target_opening = _connection_portals(
+            source, target
+        )
+
+        assert_on_boundary(source, source_side, source_point, source_opening)
+        assert_on_boundary(target, target_side, target_point, target_opening)
+
+    def test_l_shaped_locked_connections_create_real_locked_door_sector(self) -> None:
+        builder = UdmfBuilder()
+        source_sector = builder.add_sector(floor=0, ceiling=128)
+        target_sector = builder.add_sector(floor=0, ceiling=128)
+        source = (0, -512, 512, 0)
+        target = (1024, -2048, 1536, -1536)
+        # Add room boundaries first, as build_geometry_textmap does, so connection
+        # sectors can merge into real two-sided portals.
+        for rect, sector in ((source, source_sector), (target, target_sector)):
+            x1, y1, x2, y2 = rect
+            builder.add_line((x1, y1), (x1, y2), sector)
+            builder.add_line((x1, y2), (x2, y2), sector)
+            builder.add_line((x2, y2), (x2, y1), sector)
+            builder.add_line((x2, y1), (x1, y1), sector)
+
+        created = _add_connection(
+            builder,
+            source,
+            target,
+            {"from": "source", "to": "target", "type": "locked_door", "key": "red"},
+            100,
+            {
+                "floor": "FLOOR0_1",
+                "ceiling": "CEIL3_5",
+                "wall": "STARTAN2",
+                "door_track": "DOORTRAK",
+            },
+        )
+
+        self.assertEqual(created["doors"], 1)
+        self.assertTrue(any(line.get("special") == 12 and line.get("locknumber") == 1 for line in builder.linedefs))
+
+    def test_main_path_places_required_key_room_before_locked_exit(self) -> None:
+        document = {
+            "spaces": [
+                {"id": "start", "size": "small"},
+                {"id": "hub", "size": "large"},
+                {"id": "red_key_room", "size": "medium"},
+                {"id": "exit", "size": "small"},
+            ],
+            "progression": {
+                "start": "start",
+                "exit": "exit",
+                "critical_path": ["start", "hub", "red_key_room", "red_locked_door", "exit"],
+                "keys": [{"color": "red", "location": "red_key_room"}],
+            },
+            "connections": [
+                {"from": "start", "to": "hub", "type": "doorway"},
+                {"from": "hub", "to": "red_key_room", "type": "doorway"},
+                {"from": "red_key_room", "to": "exit", "type": "locked_door", "key": "red"},
+            ],
+        }
+
+        boxes = _place_rooms(document["spaces"], document["progression"], document["connections"])
+
+        self.assertGreater(boxes["red_key_room"]["c"], boxes["hub"]["c"])
+        self.assertGreater(boxes["exit"]["c"], boxes["red_key_room"]["c"])
+        self.assertEqual(boxes["red_key_room"]["r"], boxes["hub"]["r"])
 
     def test_compile_to_plan_preserves_progression_gate(self) -> None:
         plan = compile_to_plan(load_example())
@@ -417,6 +520,71 @@ class SchemaTests(unittest.TestCase):
         reachable_heights = {sectors[index]["heightfloor"] for index in reachable}
         self.assertIn(32, reachable_heights)
         self.assertIn(-24, reachable_heights)
+
+    def test_locked_door_connection_adds_use_specials_on_both_faces(self) -> None:
+        builder = UdmfBuilder()
+        source_sector = builder.add_sector(floor=0, ceiling=128)
+        target_sector = builder.add_sector(floor=0, ceiling=128)
+        source = (0, -512, 512, 0)
+        target = (2048, -512, 2560, 0)
+        for rect, sector in ((source, source_sector), (target, target_sector)):
+            x1, y1, x2, y2 = rect
+            builder.add_line((x1, y1), (x1, y2), sector)
+            builder.add_line((x1, y2), (x2, y2), sector)
+            builder.add_line((x2, y2), (x2, y1), sector)
+            builder.add_line((x2, y1), (x1, y1), sector)
+
+        _add_connection(
+            builder,
+            source,
+            target,
+            {"from": "source", "to": "target", "type": "locked_door", "key": "blue"},
+            100,
+            {
+                "floor": "FLOOR0_1",
+                "ceiling": "CEIL3_5",
+                "wall": "STARTAN2",
+                "door_track": "DOORTRAK",
+            },
+        )
+
+        door_lines = [line for line in builder.linedefs if line.get("special") == 12]
+        self.assertGreaterEqual(len(door_lines), 2)
+        for line in door_lines:
+            front_sector = builder.sectors[builder.sidedefs[line["sidefront"]]["sector"]]
+            self.assertNotEqual(front_sector["heightfloor"], front_sector["heightceiling"])
+
+    def test_door_specials_are_usable_from_non_door_side(self) -> None:
+        document = load_example()
+        room_boxes = _place_rooms(document["spaces"], document["progression"], document["connections"])
+        textmap, _stats = build_geometry_textmap(document, room_boxes)
+        groups = _parse_textmap(textmap)
+
+        bad_lines = []
+        for index, line in enumerate(groups["linedef"]):
+            if line.get("special") != 12 or line.get("sideback", -1) < 0:
+                continue
+            front_sector = groups["sector"][groups["sidedef"][line["sidefront"]]["sector"]]
+            if front_sector["heightfloor"] == front_sector["heightceiling"]:
+                bad_lines.append(index)
+
+        self.assertEqual(bad_lines, [])
+
+    def test_bfg_item_emits_bfg9000_thing_type(self) -> None:
+        document = load_example()
+        document["spaces"][0]["things"]["items"] = ["bfg9000"]
+
+        room_boxes = _place_rooms(document["spaces"], document["progression"], document["connections"])
+        textmap, stats = build_geometry_textmap(document, room_boxes)
+        groups = _parse_textmap(textmap)
+
+        bfg_things = [thing for thing in groups["thing"] if thing["type"] == 2006]
+        self.assertEqual(len(bfg_things), 1)
+        start_rect = _box_to_rect(room_boxes["start_room"], 128)
+        expected_x = (start_rect[0] + start_rect[2]) // 2
+        expected_y = (start_rect[1] + start_rect[3]) // 2
+        self.assertEqual((bfg_things[0]["x"], bfg_things[0]["y"]), (expected_x, expected_y))
+        self.assertEqual(stats.things_by_kind.get("bfg"), 1)
 
     def test_thing_placement_avoids_blocking_height_features(self) -> None:
         document = load_example()

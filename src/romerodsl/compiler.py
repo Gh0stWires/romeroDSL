@@ -193,16 +193,18 @@ def _place_rooms(spaces: list[dict[str, Any]], progression: dict[str, Any], conn
 
 def _main_path_order(spaces: list[dict[str, Any]], progression: dict[str, Any]) -> list[str]:
     space_ids = {space["id"] for space in spaces}
-    key_locations = {
-        key.get("location") for key in progression.get("keys", []) if isinstance(key, dict)
-    }
     start = str(progression.get("start"))
     exit_space = str(progression.get("exit"))
+    critical_spaces = [node for node in progression.get("critical_path", []) if node in space_ids]
     order: list[str] = []
-    for node in progression.get("critical_path", []):
-        if node not in space_ids or node in order:
+    for index, node in enumerate(critical_spaces):
+        if node in order:
             continue
-        if node in key_locations and node not in {start, exit_space}:
+        next_space = next((future for future in critical_spaces[index + 1 :] if future != node), None)
+        if next_space in order and node not in {start, exit_space}:
+            # The critical path went into a side room and then returned to an
+            # already-placed space. Keep that room as a branch instead of laying
+            # it across the main route and creating crossing corridors.
             continue
         order.append(node)
     if start in space_ids and start not in order:

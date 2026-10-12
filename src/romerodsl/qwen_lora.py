@@ -44,6 +44,7 @@ class SFTTrainConfig:
     lora_alpha: int = 32
     lora_dropout: float = 0.05
     bf16: bool = True
+    load_in_4bit: bool = False
 
 
 def load_sft_records(path: Path) -> list[dict[str, Any]]:
@@ -100,6 +101,7 @@ def training_run_plan(config: SFTTrainConfig) -> dict[str, Any]:
             "dropout": config.lora_dropout,
             "target_modules": list(LORA_TARGET_MODULES),
         },
+        "load_in_4bit": config.load_in_4bit,
         "artifacts": {
             "adapter": str(config.output_dir / "adapter").replace("\\", "/"),
             "metrics": str(config.output_dir / "metrics.json").replace("\\", "/"),
@@ -112,10 +114,10 @@ def train_qwen_lora(config: SFTTrainConfig) -> dict[str, Any]:
     """Train a LoRA adapter. Imports ML dependencies lazily so normal tests stay light."""
 
     import torch
-    from peft import LoraConfig, get_peft_model
+    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
     from torch.nn.utils.rnn import pad_sequence
     from torch.utils.data import DataLoader
-    from transformers import AutoModelForCausalLM, AutoTokenizer, get_cosine_schedule_with_warmup
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, get_cosine_schedule_with_warmup
 
     config.output_dir.mkdir(parents=True, exist_ok=True)
     (config.output_dir / "train_config.json").write_text(
@@ -128,19 +130,30 @@ def train_qwen_lora(config: SFTTrainConfig) -> dict[str, Any]:
         tokenizer.pad_token = tokenizer.eos_token
 
     dtype = torch.bfloat16 if config.bf16 and torch.cuda.is_available() else torch.float16
-    model = AutoModelForCausalLM.from_pretrained(
-        config.model_name,
-        torch_dtype=dtype,
-        device_map="auto",
-        trust_remote_code=True,
-    )
-    if hasattr(model, "gradient_checkpointing_enable"):
+    model_kwargs: dict[str, Any] = {
+        "device_map": "auto",
+        "trust_remote_code": True,
+    }
+    if config.load_in_4bit:
+        model_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=dtype,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+        )
+    else:
+        model_kwargs["torch_dtype"] = dtype
+    model = AutoModelForCausalLM.from_pretrained(config.model_name, **model_kwargs)
+    if config.load_in_4bit:
+        model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
+    elif hasattr(model, "gradient_checkpointing_enable"):
         model.gradient_checkpointing_enable()
     model.config.use_cache = False
+    lora_target_modules = _resolve_lora_target_modules(model, config.model_name)
     lora_config = LoraConfig(
         r=config.lora_rank,
         lora_alpha=config.lora_alpha,
-        target_modules=list(LORA_TARGET_MODULES),
+        target_modules=lora_target_modules,
         lora_dropout=config.lora_dropout,
         bias="none",
         task_type="CAUSAL_LM",
@@ -222,6 +235,26 @@ def train_qwen_lora(config: SFTTrainConfig) -> dict[str, Any]:
     metrics["adapter_dir"] = str(adapter_dir)
     _write_metrics(config.output_dir, metrics)
     return metrics
+
+
+def _resolve_lora_target_modules(model: Any, model_name: str) -> list[str]:
+    """Return PEFT target modules, avoiding Gemma 4's vision/audio wrappers."""
+
+    lowered = model_name.lower()
+    if "gemma-4" not in lowered:
+        return list(LORA_TARGET_MODULES)
+
+    targets = []
+    suffixes = tuple(f".{module_name}" for module_name in LORA_TARGET_MODULES)
+    for name, module in model.named_modules():
+        if not name.startswith("model.language_model."):
+            continue
+        if not name.endswith(suffixes):
+            continue
+        targets.append(name)
+    if not targets:
+        raise ValueError("no Gemma 4 language-model LoRA target modules found")
+    return targets
 
 
 class _ChatDataset:

@@ -23,6 +23,7 @@ venv/
 !.env.example
 .vscode/
 .idea/
+.hermes/
 .DS_Store
 
 # Generated Doom artifacts

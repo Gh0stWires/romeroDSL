@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 from pathlib import Path
@@ -23,15 +24,28 @@ from romerodsl.wad import validate_wad
 
 
 BASE_MODEL = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
-ADAPTER_RELATIVE = "runs/qwen2p5_coder_1p5b_v07_slim/adapter"
+DEFAULT_ADAPTER_RELATIVE = "runs/qwen2p5_coder_1p5b_v07_slim/adapter"
+DEFAULT_OUTPUT_RELATIVE = "build/v08_eval"
 ZANDRONUM = Path("C:/Users/gh0st/AppData/Local/Zandronum/zandronum.exe")
 DOOM2 = Path("C:/Users/gh0st/Downloads/DOOM2.WAD")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Evaluate a Qwen romeroDSL adapter on the v0.8 prompt suite.")
+    parser.add_argument("--adapter", default=DEFAULT_ADAPTER_RELATIVE, help="adapter directory, absolute or repo-relative")
+    parser.add_argument("--output", default=DEFAULT_OUTPUT_RELATIVE, help="output directory, absolute or repo-relative")
+    args = parser.parse_args(argv)
+
     root = Path(__file__).resolve().parents[1]
-    adapter = root / ADAPTER_RELATIVE
-    out_dir = root / "build/v08_eval"
+    adapter = Path(args.adapter)
+    if not adapter.is_absolute():
+        adapter = root / adapter
+    adapter = adapter.resolve()
+    if not adapter.exists():
+        raise FileNotFoundError(f"adapter directory does not exist: {adapter}")
+    out_dir = Path(args.output)
+    if not out_dir.is_absolute():
+        out_dir = root / out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     template = json.loads((root / "examples/blue_lock_processing.json").read_text(encoding="utf-8"))
 

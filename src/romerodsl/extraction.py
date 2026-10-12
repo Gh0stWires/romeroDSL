@@ -475,9 +475,10 @@ def _connections_for_colors(colors: list[str]) -> list[dict[str, Any]]:
 
     for index, color in enumerate(colors):
         key_room = f"{color}_key_room"
-        connections.append(
-            {"id": f"{color}_key_route", "from": previous, "to": key_room, "type": "doorway"}
-        )
+        if previous != key_room:
+            connections.append(
+                {"id": f"{color}_key_route", "from": previous, "to": key_room, "type": "doorway"}
+            )
         target = f"{colors[index + 1]}_key_room" if index + 1 < len(colors) else "exit_room"
         connections.append(
             {
@@ -497,8 +498,13 @@ def _critical_path_for_colors(colors: list[str]) -> list[str]:
     path = ["start_room", "start_to_hub", "combat_hub"]
     if not colors:
         return path + ["hub_to_exit", "exit_room"]
-    for color in colors:
-        path.extend([f"{color}_key_route", f"{color}_key_room", f"{color}_locked_door"])
+    previous = "combat_hub"
+    for index, color in enumerate(colors):
+        key_room = f"{color}_key_room"
+        if previous != key_room:
+            path.append(f"{color}_key_route")
+        path.extend([key_room, f"{color}_locked_door"])
+        previous = f"{colors[index + 1]}_key_room" if index + 1 < len(colors) else "exit_room"
     path.append("exit_room")
     return path
 

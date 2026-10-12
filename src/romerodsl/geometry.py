@@ -36,6 +36,7 @@ THING_TYPES = {
     "health": 2011,
     "ammo": 2008,
     "weapon": 2001,
+    "bfg": 2006,
 }
 
 
@@ -442,27 +443,41 @@ def _connection_portals(source: Rect, target: Rect, width: int = 128) -> tuple[S
     source_side, target_side = _connection_sides(source, target)
     half = width // 2
     if source_side in {"left", "right"}:
-        y = _aligned_axis_position(source[1], source[3], target[1], target[3], half)
-        source_point = (source[0] if source_side == "left" else source[2], y)
-        target_point = (target[0] if target_side == "left" else target[2], y)
+        source_lo, source_hi = source[1] + half, source[3] - half
+        target_lo, target_hi = target[1] + half, target[3] - half
+        if source_lo <= target_hi and target_lo <= source_hi:
+            y = _aligned_axis_position(source[1], source[3], target[1], target[3], half)
+            source_y = target_y = y
+        else:
+            source_y = _axis_center(source[1], source[3])
+            target_y = _axis_center(target[1], target[3])
+        source_point = (source[0] if source_side == "left" else source[2], source_y)
+        target_point = (target[0] if target_side == "left" else target[2], target_y)
         return (
             source_side,
             target_side,
             source_point,
             target_point,
-            Opening(source_side, y - half, y + half),
-            Opening(target_side, y - half, y + half),
+            Opening(source_side, source_y - half, source_y + half),
+            Opening(target_side, target_y - half, target_y + half),
         )
-    x = _aligned_axis_position(source[0], source[2], target[0], target[2], half)
-    source_point = (x, source[3] if source_side == "top" else source[1])
-    target_point = (x, target[3] if target_side == "top" else target[1])
+    source_lo, source_hi = source[0] + half, source[2] - half
+    target_lo, target_hi = target[0] + half, target[2] - half
+    if source_lo <= target_hi and target_lo <= source_hi:
+        x = _aligned_axis_position(source[0], source[2], target[0], target[2], half)
+        source_x = target_x = x
+    else:
+        source_x = _axis_center(source[0], source[2])
+        target_x = _axis_center(target[0], target[2])
+    source_point = (source_x, source[3] if source_side == "top" else source[1])
+    target_point = (target_x, target[3] if target_side == "top" else target[1])
     return (
         source_side,
         target_side,
         source_point,
         target_point,
-        Opening(source_side, x - half, x + half),
-        Opening(target_side, x - half, x + half),
+        Opening(source_side, source_x - half, source_x + half),
+        Opening(target_side, target_x - half, target_x + half),
     )
 
 
@@ -576,11 +591,14 @@ def _add_connection(
             if door_x1 > x_start:
                 _add_corridor_rect(builder, (x_start, sy - 64, door_x1, sy + 64), floor, materials)
                 corridors += 1
-            _add_door_rect(builder, (door_x1, sy - 64, door_x2, sy + 64), floor, door_tag, lock_color, materials)
+            door_sector = _add_door_rect(
+                builder, (door_x1, sy - 64, door_x2, sy + 64), floor, door_tag, lock_color, materials
+            )
             doors += 1
             if door_x2 < x_end:
                 _add_corridor_rect(builder, (door_x2, sy - 64, x_end, sy + 64), floor, materials)
                 corridors += 1
+            _mark_door_portals(builder, door_sector, door_tag, lock_color)
         else:
             _add_corridor_rect(builder, (x_start, sy - 64, x_end, sy + 64), floor, materials)
             corridors += 1
@@ -593,20 +611,95 @@ def _add_connection(
             if door_y1 > y_start:
                 _add_corridor_rect(builder, (sx - 64, y_start, sx + 64, door_y1), floor, materials)
                 corridors += 1
-            _add_door_rect(builder, (sx - 64, door_y1, sx + 64, door_y2), floor, door_tag, lock_color, materials)
+            door_sector = _add_door_rect(
+                builder, (sx - 64, door_y1, sx + 64, door_y2), floor, door_tag, lock_color, materials
+            )
             doors += 1
             if door_y2 < y_end:
                 _add_corridor_rect(builder, (sx - 64, door_y2, sx + 64, y_end), floor, materials)
                 corridors += 1
+            _mark_door_portals(builder, door_sector, door_tag, lock_color)
         else:
             _add_corridor_rect(builder, (sx - 64, y_start, sx + 64, y_end), floor, materials)
             corridors += 1
     else:
-        # L-shaped fallback for future less-regular room placement.
+        # L-shaped fallback for rooms whose side openings do not overlap. Put the
+        # actual door on one leg instead of silently downgrading a locked-door
+        # connection into ordinary corridor sectors.
         mid = (tx, sy)
-        _add_corridor_rect(builder, _rect_between_points((sx, sy), mid), floor, materials)
-        _add_corridor_rect(builder, _rect_between_points(mid, (tx, ty)), floor, materials)
-        corridors += 2
+        first = _add_connection_segment(
+            builder, source_point, mid, False, door_tag, lock_color, materials
+        )
+        second = _add_connection_segment(
+            builder, mid, target_point, is_door, door_tag, lock_color, materials
+        )
+        if is_door and second["doors"] == 0:
+            first = _add_connection_segment(
+                builder, source_point, mid, True, door_tag, lock_color, materials
+            )
+        corridors += first["corridors"] + second["corridors"]
+        doors += first["doors"] + second["doors"]
+    return {"corridors": corridors, "doors": doors}
+
+
+def _add_connection_segment(
+    builder: UdmfBuilder,
+    start: Point,
+    end: Point,
+    is_door: bool,
+    door_tag: int,
+    lock_color: str | None,
+    materials: dict[str, str],
+) -> dict[str, int]:
+    sx, sy = start
+    tx, ty = end
+    if sx == tx and sy == ty:
+        return {"corridors": 0, "doors": 0}
+    if sx != tx and sy != ty:
+        raise ValueError("connection segment must be axis-aligned")
+
+    corridors = 0
+    doors = 0
+    if sy == ty:
+        x_start, x_end = sorted((sx, tx))
+        if is_door:
+            door_width = min(128, x_end - x_start)
+            door_x1 = (x_start + x_end - door_width) // 2
+            door_x2 = door_x1 + door_width
+            if door_x1 > x_start:
+                _add_corridor_rect(builder, (x_start, sy - 64, door_x1, sy + 64), 0, materials)
+                corridors += 1
+            door_sector = _add_door_rect(
+                builder, (door_x1, sy - 64, door_x2, sy + 64), 0, door_tag, lock_color, materials
+            )
+            doors += 1
+            if door_x2 < x_end:
+                _add_corridor_rect(builder, (door_x2, sy - 64, x_end, sy + 64), 0, materials)
+                corridors += 1
+            _mark_door_portals(builder, door_sector, door_tag, lock_color)
+        else:
+            _add_corridor_rect(builder, (x_start, sy - 64, x_end, sy + 64), 0, materials)
+            corridors += 1
+    else:
+        y_start, y_end = sorted((sy, ty))
+        if is_door:
+            door_height = min(128, y_end - y_start)
+            door_y1 = (y_start + y_end - door_height) // 2
+            door_y2 = door_y1 + door_height
+            if door_y1 > y_start:
+                _add_corridor_rect(builder, (sx - 64, y_start, sx + 64, door_y1), 0, materials)
+                corridors += 1
+            door_sector = _add_door_rect(
+                builder, (sx - 64, door_y1, sx + 64, door_y2), 0, door_tag, lock_color, materials
+            )
+            doors += 1
+            if door_y2 < y_end:
+                _add_corridor_rect(builder, (sx - 64, door_y2, sx + 64, y_end), 0, materials)
+                corridors += 1
+            _mark_door_portals(builder, door_sector, door_tag, lock_color)
+        else:
+            _add_corridor_rect(builder, (sx - 64, y_start, sx + 64, y_end), 0, materials)
+            corridors += 1
     return {"corridors": corridors, "doors": doors}
 
 
@@ -637,7 +730,12 @@ def _add_door_rect(
         tag=tag,
     )
     _add_plain_rect(builder, rect, sector, texture=materials["door_track"])
-    special = {
+    _mark_door_portals(builder, sector, tag, lock_color)
+    return sector
+
+
+def _door_special(tag: int, lock_color: str | None) -> dict[str, Any]:
+    special: dict[str, Any] = {
         "special": 12,
         "playeruse": True,
         "playeruseback": True,
@@ -649,18 +747,26 @@ def _add_door_rect(
     }
     if lock_color:
         special["locknumber"] = DOOR_LOCK_NUMBERS[lock_color]
-    # Mark every portal touching this door sector as an usable door linedef.
+    return special
+
+
+def _mark_door_portals(builder: UdmfBuilder, sector: int, tag: int, lock_color: str | None) -> None:
+    special = _door_special(tag, lock_color)
+    # Mark every portal touching this door sector as a usable door linedef.
+    # Zandronum reliably activates Door_Raise from the front side; do not rely
+    # on back-side activation flags for the far face of a generated door.
     for index, line in enumerate(builder.linedefs):
         if line.get("sideback", -1) < 0:
             continue
-        sectors = {
-            builder.sidedefs[line["sidefront"]]["sector"],
-            builder.sidedefs[line["sideback"]]["sector"],
-        }
-        if sector in sectors:
-            line.update(special)
-            builder._apply_door_textures(index)
-    return sector
+        front_sector = builder.sidedefs[line["sidefront"]]["sector"]
+        back_sector = builder.sidedefs[line["sideback"]]["sector"]
+        if sector not in {front_sector, back_sector}:
+            continue
+        if front_sector == sector:
+            line["sidefront"], line["sideback"] = line["sideback"], line["sidefront"]
+            line["v1"], line["v2"] = line["v2"], line["v1"]
+        line.update(special)
+        builder._apply_door_textures(index)
 
 
 def _add_plain_rect(builder: UdmfBuilder, rect: Rect, sector: int, *, texture: str = WALL_TEXTURE) -> None:
@@ -840,7 +946,11 @@ def _add_space_things(builder: UdmfBuilder, document: dict[str, Any], rects: dic
         for item in _extract_items(space):
             kind = _item_kind(item)
             if kind:
-                x, y = _safe_room_point(rect, offset, blocked_rects)
+                if kind == "bfg":
+                    center = _center(rect)
+                    x, y = center if not _point_in_any_rect(center, blocked_rects) else _safe_room_point(rect, offset, blocked_rects)
+                else:
+                    x, y = _safe_room_point(rect, offset, blocked_rects)
                 builder.add_thing(x, y, kind)
                 _count_thing(stats, kind)
                 offset += 1
@@ -900,6 +1010,8 @@ def _extract_monsters(space: dict[str, Any]) -> list[tuple[str, int]]:
 
 def _item_kind(item: str) -> str | None:
     lowered = item.lower()
+    if "bfg" in lowered:
+        return "bfg"
     if "shotgun" in lowered or "chaingun" in lowered or "weapon" in lowered:
         return "weapon"
     if "shell" in lowered or "ammo" in lowered or "clip" in lowered:

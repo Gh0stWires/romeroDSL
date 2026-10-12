@@ -1,0 +1,450 @@
+{
+  "dsl_version": "0.1",
+  "game": "doom2",
+  "format_target": "udmf",
+  "title": "Complex Eight Room Keyed BFG Techbase",
+  "scale": "big",
+  "difficulty": "hard",
+  "intended_playtime": "medium",
+  "compatibility": {
+    "jump_required": false,
+    "crouch_required": false,
+    "freelook_required": false
+  },
+  "design_intent": {
+    "summary": "A big eight-room techbase with separate combat areas, blue and red keycard rooms, a blue-locked BFG armory on the route to the red key, and a red-locked exit wing.",
+    "topology": "eight_room_two_key_route_with_bfg_armory",
+    "progression_style": "blue_key_then_bfg_armory_then_red_key_then_red_locked_exit",
+    "combat_style": "several_distinct_combat_areas",
+    "reward_style": "optional_bfg_room_behind_existing_key_lock"
+  },
+  "theme": {
+    "primary": "techbase",
+    "secondary": "industrial",
+    "mood": "tense",
+    "texture_palette": {
+      "walls": ["STARTAN2", "METAL2", "STONE2"],
+      "floors": ["FLOOR0_1", "FLAT20", "FLOOR0_2"],
+      "ceilings": ["CEIL3_5"],
+      "doors": ["BIGDOOR2"]
+    },
+    "materials": {
+      "floor": "FLOOR0_1",
+      "ceiling": "CEIL3_5",
+      "wall": "STARTAN2",
+      "upper_wall": "STARTAN2",
+      "lower_wall": "STEP1",
+      "door": "BIGDOOR2",
+      "door_track": "DOORTRAK",
+      "exit_switch": "SW1EXIT"
+    },
+    "lighting": {
+      "base": "medium",
+      "contrast": "high",
+      "landmarks": [
+        "blue_key_room_uses_cooler_floor_materials",
+        "red_key_room_uses_warmer_stone_materials",
+        "bfg_armory_is_a_visible_reward_branch",
+        "exit_room_has_red_warning_lights"
+      ]
+    }
+  },
+  "progression": {
+    "start": "start_room",
+    "exit": "exit_room",
+    "critical_path": [
+      "start_room",
+      "entry_combat",
+      "central_hub",
+      "blue_key_room",
+      "blue_locked_route",
+      "bfg_armory",
+      "bfg_to_red_key",
+      "red_key_room",
+      "red_locked_exit_door",
+      "exit_wing",
+      "exit_room"
+    ],
+    "keys": [
+      {
+        "color": "blue",
+        "location": "blue_key_room",
+        "reachable_before": ["blue_locked_route"]
+      },
+      {
+        "color": "red",
+        "location": "red_key_room",
+        "reachable_before": ["red_locked_exit_door"]
+      }
+    ],
+    "gates": [
+      {
+        "id": "blue_locked_route",
+        "type": "locked_door",
+        "key": "blue",
+        "blocks": "blue_key_room -> bfg_armory",
+        "required_for_exit": true
+      },
+      {
+        "id": "red_locked_exit_door",
+        "type": "locked_door",
+        "key": "red",
+        "blocks": "red_key_room -> exit_wing",
+        "required_for_exit": true
+      }
+    ]
+  },
+  "spaces": [
+    {
+      "id": "start_room",
+      "role": "player_start",
+      "size": "small",
+      "shape": "rectangle",
+      "floor_height": 0,
+      "ceiling_height": 128,
+      "mood": "safe_intro",
+      "materials": {
+        "floor": "FLOOR0_1",
+        "ceiling": "CEIL3_5",
+        "wall": "STARTAN2"
+      },
+      "things": {
+        "player_start": true,
+        "items": ["shotgun", "shells_small", "health_bonus"]
+      }
+    },
+    {
+      "id": "entry_combat",
+      "role": "combat_room",
+      "size": "medium",
+      "shape": "rectangle_with_side_alcoves",
+      "floor_height": 0,
+      "ceiling_height": 128,
+      "mood": "first_contact",
+      "encounter": {
+        "intensity": "medium",
+        "monsters": [
+          {"zombieman": 4},
+          {"imp": 3}
+        ],
+        "resources": {
+          "ammo": "light",
+          "health": "light"
+        }
+      },
+      "things": {
+        "items": ["clip_small", "stimpack"]
+      }
+    },
+    {
+      "id": "central_hub",
+      "role": "combat_hub",
+      "size": "huge",
+      "shape": "irregular_octagonal",
+      "floor_height": 0,
+      "ceiling_height": 192,
+      "materials": {
+        "floor": "FLAT20",
+        "ceiling": "CEIL3_5",
+        "wall": "METAL2",
+        "upper_wall": "METAL2",
+        "lower_wall": "STEP1"
+      },
+      "height_topology": {
+        "base_floor": 0,
+        "ceiling": 192,
+        "features": [
+          {
+            "id": "hub_central_pillars",
+            "type": "ceiling_pillar_cluster",
+            "count": 4,
+            "placement": "central",
+            "floor_height": 192,
+            "ceiling_height": 192,
+            "blocks_movement": true,
+            "blocks_line_of_sight": true
+          },
+          {
+            "id": "hub_north_overlook",
+            "type": "raised_platform",
+            "placement": "north_wall",
+            "floor_height": 32,
+            "access": "stairs",
+            "purpose": "monster_overlook"
+          }
+        ]
+      },
+      "encounter": {
+        "intensity": "heavy",
+        "monsters": [
+          {"imp": 8},
+          {"shotgun_guy": 4}
+        ],
+        "cover": ["hub_central_pillars", "hub_north_overlook"],
+        "resources": {
+          "ammo": "moderate",
+          "health": "moderate"
+        }
+      },
+      "things": {
+        "items": ["shells_small", "ammo_box", "medkit"]
+      }
+    },
+    {
+      "id": "blue_key_room",
+      "role": "key_room",
+      "size": "medium",
+      "shape": "rectangle_with_side_alcoves",
+      "floor_height": -16,
+      "ceiling_height": 144,
+      "materials": {
+        "floor": "FLOOR0_2",
+        "ceiling": "CEIL3_5",
+        "wall": "STARTAN2",
+        "lower_wall": "STEP1"
+      },
+      "contains": {
+        "key": "blue"
+      },
+      "encounter": {
+        "trigger": "player_takes_blue_key",
+        "intensity": "medium",
+        "monsters": [
+          {"demon": 2},
+          {"imp": 4}
+        ],
+        "resources": {
+          "ammo": "light",
+          "health": "moderate"
+        }
+      },
+      "things": {
+        "items": ["shells_small", "stimpack"]
+      }
+    },
+    {
+      "id": "red_key_room",
+      "role": "key_room",
+      "size": "large",
+      "shape": "irregular_octagonal",
+      "floor_height": 16,
+      "ceiling_height": 176,
+      "materials": {
+        "floor": "FLAT20",
+        "ceiling": "CEIL3_5",
+        "wall": "STONE2",
+        "upper_wall": "STONE2",
+        "lower_wall": "STEP1"
+      },
+      "contains": {
+        "key": "red"
+      },
+      "height_topology": {
+        "base_floor": 16,
+        "ceiling": 176,
+        "features": [
+          {
+            "id": "red_key_south_pit",
+            "type": "shallow_pit",
+            "placement": "south_side",
+            "floor_height": -8,
+            "escape": "stairs"
+          }
+        ]
+      },
+      "encounter": {
+        "trigger": "player_enters_red_key_room",
+        "intensity": "heavy",
+        "monsters": [
+          {"imp": 6},
+          {"shotgun_guy": 4},
+          {"demon": 2}
+        ],
+        "resources": {
+          "ammo": "moderate",
+          "health": "light"
+        }
+      },
+      "things": {
+        "items": ["chaingun", "ammo_box", "medkit"]
+      }
+    },
+    {
+      "id": "bfg_armory",
+      "role": "reward_room",
+      "size": "medium",
+      "shape": "rectangle_with_side_alcoves",
+      "floor_height": 0,
+      "ceiling_height": 128,
+      "secret": false,
+      "materials": {
+        "floor": "FLOOR0_1",
+        "ceiling": "CEIL3_5",
+        "wall": "METAL2",
+        "lower_wall": "STEP1"
+      },
+      "contains": {
+        "items": ["bfg9000", "cell_pack", "medkit"]
+      },
+      "encounter": {
+        "intensity": "medium",
+        "monsters": [
+          {"imp": 4},
+          {"shotgun_guy": 2}
+        ],
+        "resources": {
+          "ammo": "high",
+          "health": "moderate"
+        }
+      }
+    },
+    {
+      "id": "exit_wing",
+      "role": "final_combat",
+      "size": "large",
+      "shape": "narrow_hall_with_cover",
+      "floor_height": 0,
+      "ceiling_height": 144,
+      "materials": {
+        "floor": "FLOOR0_3",
+        "ceiling": "CEIL3_5",
+        "wall": "METAL2",
+        "lower_wall": "STEP1"
+      },
+      "height_topology": {
+        "base_floor": 0,
+        "ceiling": 144,
+        "features": [
+          {
+            "id": "exit_wing_side_platform",
+            "type": "raised_platform",
+            "placement": "north_wall",
+            "floor_height": 24,
+            "access": "stairs",
+            "purpose": "final_monster_platform"
+          }
+        ]
+      },
+      "encounter": {
+        "intensity": "heavy",
+        "monsters": [
+          {"imp": 8},
+          {"shotgun_guy": 6}
+        ],
+        "resources": {
+          "ammo": "moderate",
+          "health": "moderate"
+        }
+      },
+      "things": {
+        "items": ["ammo_box", "medkit"]
+      }
+    },
+    {
+      "id": "exit_room",
+      "role": "exit",
+      "size": "small",
+      "shape": "rectangle",
+      "floor_height": 0,
+      "ceiling_height": 128,
+      "materials": {
+        "floor": "FLOOR0_3",
+        "ceiling": "CEIL3_5",
+        "wall": "STARTAN3",
+        "exit_switch": "SW1EXIT"
+      },
+      "contains": {
+        "exit_switch": true
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "start_to_entry",
+      "from": "start_room",
+      "to": "entry_combat",
+      "type": "doorway",
+      "width": "normal",
+      "locked": false
+    },
+    {
+      "id": "entry_to_hub",
+      "from": "entry_combat",
+      "to": "central_hub",
+      "type": "door",
+      "door_style": "normal",
+      "locked": false,
+      "bidirectional": true
+    },
+    {
+      "id": "blue_key_route",
+      "from": "central_hub",
+      "to": "blue_key_room",
+      "type": "stairs",
+      "height_change": -16,
+      "locked": false
+    },
+    {
+      "id": "blue_locked_route",
+      "from": "blue_key_room",
+      "to": "bfg_armory",
+      "type": "locked_door",
+      "key": "blue",
+      "width": "normal",
+      "bidirectional": true,
+      "required_for_exit": true
+    },
+    {
+      "id": "bfg_to_red_key",
+      "from": "bfg_armory",
+      "to": "red_key_room",
+      "type": "hallway",
+      "locked": false
+    },
+    {
+      "id": "red_locked_exit_door",
+      "from": "red_key_room",
+      "to": "exit_wing",
+      "type": "locked_door",
+      "key": "red",
+      "width": "normal",
+      "bidirectional": true,
+      "required_for_exit": true
+    },
+    {
+      "id": "exit_wing_to_exit_room",
+      "from": "exit_wing",
+      "to": "exit_room",
+      "type": "hallway",
+      "locked": false
+    }
+  ],
+  "validation": {
+    "required": [
+      "exactly_one_player_start",
+      "exactly_one_exit",
+      "start_can_reach_exit",
+      "blue_key_reachable_before_blue_locked_route",
+      "bfg_armory_on_required_route_after_blue_key",
+      "red_key_reachable_before_red_locked_exit_door",
+      "exit_requires_blue_locked_route",
+      "exit_requires_red_locked_exit_door",
+      "optional_bfg_room_behind_existing_key_lock",
+      "locked_doors_are_partition_edges",
+      "all_required_spaces_connected",
+      "all_doors_bidirectional_unless_marked",
+      "all_height_transitions_have_valid_textures",
+      "monsters_have_walkable_positions",
+      "no_required_progression_inside_secret"
+    ],
+    "reject_if": [
+      "compiler_invents_missing_required_key",
+      "compiler_invents_missing_required_lock",
+      "compiler_treats_bfg_as_key_color",
+      "bfg_room_missing_from_required_route",
+      "exit_reachable_without_red_key",
+      "locked_door_is_decorative",
+      "required_room_disconnected"
+    ]
+  }
+}

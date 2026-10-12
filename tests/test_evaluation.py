@@ -74,6 +74,33 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["space_id_overlap"], 1.0)
         self.assertEqual(report["connection_id_overlap"], 1.0)
         self.assertEqual(report["template_similarity"], "high")
+    def test_template_similarity_flags_same_structure_with_different_ids(self) -> None:
+        example = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+        generated = {
+            "title": "Small Techbase Key Route",
+            "theme": {"primary": "techbase"},
+            "progression": {
+                "keys": [{"color": "red", "location": "red_key_room"}],
+                "gates": [{"id": "red_locked_door", "key": "red"}],
+            },
+            "spaces": [
+                {"id": "start", "role": "player_start", "shape": "rectangle"},
+                {"id": "hub", "role": "combat_hub", "shape": "irregular_octagonal"},
+                {"id": "key", "role": "key_room", "shape": "rectangle_with_side_alcoves"},
+                {"id": "exit", "role": "exit", "shape": "rectangle"},
+            ],
+            "connections": [
+                {"from": "start", "to": "hub"},
+                {"from": "hub", "to": "key"},
+                {"from": "key", "to": "exit"},
+            ],
+        }
+
+        report = template_similarity_report(generated, example)
+
+        self.assertEqual(report["space_id_overlap"], 0.0)
+        self.assertGreaterEqual(report["template_structural_score"], 0.65)
+        self.assertEqual(report["template_similarity"], "high")
 
 
 if __name__ == "__main__":
