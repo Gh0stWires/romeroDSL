@@ -21,6 +21,11 @@ from romerodsl.qwen_lora import (
     train_qwen_lora,
     training_run_plan,
 )
+from romerodsl.evaluation import (
+    PHASE6_BENCHMARK_CASES,
+    evaluate_no_repair_output,
+    run_no_repair_benchmark,
+)
 from romerodsl.schema import ValidationReport, validate_document
 
 __all__ = [
@@ -41,6 +46,9 @@ __all__ = [
     "training_record_from_graph_sample",
     "train_qwen_lora",
     "training_run_plan",
+    "PHASE6_BENCHMARK_CASES",
+    "evaluate_no_repair_output",
+    "run_no_repair_benchmark",
     "validate_document",
     "validate_sft_jsonl",
 ]

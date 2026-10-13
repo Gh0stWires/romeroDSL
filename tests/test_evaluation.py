@@ -13,6 +13,9 @@ from romerodsl.evaluation import (
     template_similarity_report,
     v08_prompt_expectations,
     v08_prompt_suite,
+    PHASE6_BENCHMARK_CASES,
+    evaluate_no_repair_output,
+    run_no_repair_benchmark,
 )
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "blue_lock_processing.json"
@@ -159,6 +162,69 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(report["space_id_overlap"], 0.0)
         self.assertGreaterEqual(report["template_structural_score"], 0.65)
         self.assertEqual(report["template_similarity"], "high")
+    def test_phase6_benchmark_has_held_out_tiers(self) -> None:
+        self.assertGreaterEqual(len(PHASE6_BENCHMARK_CASES), 30)
+        tiers = {case["complexity_tier"] for case in PHASE6_BENCHMARK_CASES}
+        self.assertEqual(tiers, {"basic", "intermediate", "advanced", "expert"})
+        for tier in tiers:
+            self.assertGreaterEqual(
+                sum(case["complexity_tier"] == tier for case in PHASE6_BENCHMARK_CASES),
+                7,
+            )
+        self.assertEqual(
+            len({case["id"] for case in PHASE6_BENCHMARK_CASES}),
+            len(PHASE6_BENCHMARK_CASES),
+        )
+
+    def test_no_repair_evaluation_preserves_raw_failure_and_categories(self) -> None:
+        case = PHASE6_BENCHMARK_CASES[0]
+        raw = '{"dsl_version": "0.1", "spaces": ['
+        report = evaluate_no_repair_output(case, raw)
+        self.assertFalse(report["json_parse_success"])
+        self.assertFalse(report["first_pass_success"])
+        self.assertIn("syntax_failure", report["failure_categories"])
+        self.assertEqual(report["raw_output"], raw)
+        self.assertFalse(report["repair_applied"])
+
+    def test_no_repair_evaluation_reports_all_success_dimensions(self) -> None:
+        document = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+        case = dict(PHASE6_BENCHMARK_CASES[0])
+        case["prompt"] = "make a compact techbase map with a red key and red locked door"
+        case["expected_key_colors"] = ["red"]
+        case["expected_locked_door_colors"] = ["red"]
+        report = evaluate_no_repair_output(case, json.dumps(document))
+        for field in (
+            "json_parse_success",
+            "dsl_schema_valid",
+            "exact_prompt_constraints_satisfied",
+            "correct_room_count",
+            "correct_key_lock_behavior",
+            "valid_progression_and_connectivity",
+            "geometry_compilation_success",
+            "wad_export_valid",
+        ):
+            self.assertIn(field, report)
+        self.assertIn("architectural_diversity", report)
+        self.assertIn("template_similarity", report)
+        self.assertFalse(report["repair_applied"])
+
+    def test_benchmark_runner_stores_original_model_output(self) -> None:
+        import tempfile
+
+        document = EXAMPLE.read_text(encoding="utf-8")
+        cases = [dict(PHASE6_BENCHMARK_CASES[0])]
+        with tempfile.TemporaryDirectory() as directory:
+            report = run_no_repair_benchmark(
+                lambda prompt: document,
+                Path(directory),
+                cases=cases,
+            )
+            self.assertEqual(report["benchmark_version"], "phase6_no_repair_v1")
+            raw_path = Path(directory) / cases[0]["id"] / "raw_output.txt"
+            result_path = Path(directory) / cases[0]["id"] / "result.json"
+            self.assertEqual(raw_path.read_text(encoding="utf-8"), document)
+            self.assertTrue(result_path.exists())
+            self.assertEqual(report["counts"]["total"], 1)
 
 
 if __name__ == "__main__":

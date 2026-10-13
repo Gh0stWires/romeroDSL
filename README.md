@@ -14,7 +14,7 @@ This keeps room topology, height/elevation, and key progression as first-class l
 
 ## Current status
 
-This is v0.13: a GitHub-ready semantic Doom DSL pipeline plus early no-repair model-training experiments, a deterministic complexity-balanced curriculum builder, and leakage-resistant SFT splitting/token diagnostics. The compiler/validator path is solid enough to prove hand-authored maps with real rooms, keyed progression, BFG rewards, material validation, and UDMF/WAD export. The model path is improving, but it is not yet a solved `prompt -> playable WAD` system.
+This is v0.14: a GitHub-ready semantic Doom DSL pipeline plus early no-repair model-training experiments, a deterministic complexity-balanced curriculum builder, leakage-resistant SFT splitting/token diagnostics, and a permanent held-out no-repair benchmark. The compiler/validator path is solid enough to prove hand-authored maps with real rooms, keyed progression, BFG rewards, material validation, and UDMF/WAD export. The model path is improving, but it is not yet a solved `prompt -> playable WAD` system.
 
 The current best training run is the clean Gemma 4 E4B 4-bit QLoRA adapter at `runs/gemma4_e4b_v10_light_clean/adapter`. It trained on the rebuilt Gemma-light SFT set after fixing the multi-key self-connection bug and adding quality gates for self-connections, invalid materials, missing `spaces`, and route bypasses. The run completed 100 steps with final train loss `0.01657` and validation loss `0.01367` on the canonical SFT distribution.
 
@@ -256,6 +256,26 @@ python -m romerodsl validate-sft-jsonl build/v08_sft/romerodsl_sft_v08_full.json
 
 The SFT file uses chat-style records with a system instruction, the user prompt, and an assistant response that is only the canonical DSL JSON object. `validate-sft-jsonl` reparses every assistant response and runs `validate_document()` before the file is considered trainable. The assistant target omits source-WAD provenance, raw source height arrays, and extracted source titles, so the model learns the authored level contract instead of memorizing seed names.
 
+## Phase 6 permanent no-repair benchmark
+
+`src/romerodsl/evaluation.py` now defines `PHASE6_BENCHMARK_CASES`, a stable 32-prompt held-out suite with eight independent design families in each `basic`, `intermediate`, `advanced`, and `expert` tier. The prompts are separate from the v0.8 smoke prompts and include exact room-count, key/lock, branch/loop, elevation, secret, and no-lock contracts.
+
+Use `run_no_repair_benchmark()` with a generator that returns the model's raw text:
+
+```python
+from romerodsl.evaluation import run_no_repair_benchmark
+
+report = run_no_repair_benchmark(
+    lambda prompt: generate_raw_text(prompt),
+    "build/phase6_no_repair",
+    training_templates=training_template_documents,
+)
+```
+
+Each case stores the untouched response in `raw_output.txt`, the per-case result in `result.json`, and the aggregate in `benchmark_report.json`. A response counts as a first-pass success only when strict JSON parsing, DSL validation, exact prompt constraints, room count, key/lock behavior, progression/connectivity, geometry compilation, and WAD validation all pass. No JSON extraction, output repair, compiler repair, or iterative correction is applied. Failure categories include syntax failure, missing required field, invalid material, unmet prompt requirement, incorrect progression, invalid geometry, unsupported feature, and repetitive/degenerate architecture. Template similarity is reported against the caller-provided training templates; if no templates are supplied, the report explicitly marks that comparison unavailable.
+
+The harness records `iterative_correction_success: null` and `iterative_correction_evaluated: false` rather than mixing a future correction loop into the first-pass score. Any later correction pipeline must be run and reported as a separate metric.
+
 ## Train v0.8 Qwen LoRA adapter
 
 The first training target was `Qwen/Qwen2.5-Coder-1.5B-Instruct` because romeroDSL is strict JSON/code-like output and the 1.5B model is small enough for local iteration.
@@ -338,7 +358,8 @@ The compiler may make valid geometry from those decisions, but it should not inv
 11. v0.11 / Phase 3: topology-preserving graph-cache extraction, explicit extracted/synthetic/hand-authored provenance, source-versus-DSL topology audit, and honest rejection of unsupported source maps. Exact linedef geometry remains a future source-WAD parsing task.
 12. v0.12 / Phase 4: deterministic complexity-balanced synthetic curriculum with exact prompt/target room-count alignment, tiered topology, independent architectural/combat/progression variation, duplicate-layout rejection, and SFT distribution reporting. Synthetic examples remain separately labeled from extracted WAD examples.
 13. v0.13 / Phase 5: leakage-resistant design-family train/validation/test splitting, source/synthetic/hand-authored group keys, token-length diagnostics, critical JSON truncation detection, and explicit reject/preserve-target policies. No GPU training is started until the diagnostics are clean.
-14. Next: evaluate held-out source-design families with the no-repair suite before any new fine-tune.
+14. v0.14 / Phase 6: permanent 32-prompt held-out no-repair benchmark across all complexity tiers, strict raw-output preservation, prompt/progression/geometry/WAD gates, architecture diversity metrics, training-template similarity, and categorized failures. Iterative correction remains a separate future experiment.
+15. Next: run the Phase 6 suite against a selected adapter before any new fine-tune.
 
 ## Repository layout
 
