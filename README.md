@@ -118,7 +118,39 @@ python -m romerodsl export-wad examples/phase2_graph_layout.json --output build/
 
 The layout stage rejects invalid seed types and overlapping room boxes before geometry export. It does not invent connections or alter semantic progression.
 
-## Audit and build prompt-to-DSL training pairs
+## Phase 3 topology-preserving source extraction
+
+Phase 3 adds an explicit source-grounded extraction mode without changing the legacy default. `legacy_canonical` remains available for regression comparisons, but its output is labeled `dataset_class: synthetic` because it is a procedural scaffold. Use `topology_preserving` when the graph cache contains enough evidence:
+
+```bash
+python -m romerodsl build-training-pairs \
+  --graph-cache C:/Users/gh0st/Documents/RomeroGan/romerogan_v2/data/graph_cache_v1 \
+  --output build/phase3_topology_training_pairs \
+  --extraction-mode topology_preserving \
+  --prompt-variants-per-sample 4
+```
+
+This mode groups same-height sectors joined by source `connection` edges into approximate spaces, reconstructs room adjacency from traversable source edges, and preserves observed branches, cycles, height bands, room roles, entities, exits, and route-required key/lock evidence. Samples without reliable start/exit route evidence are rejected with `TopologyExtractionError`; the extractor does not fabricate a canonical route and call it extracted. Training records carry both `dataset_class: extracted` and `extraction_mode: topology_preserving` labels.
+
+The graph cache does not contain original linedef vertex loops or complete thing coordinates. Therefore exact wall polygons, portal positions, and encounter placement are explicitly approximated. The source WAD path is retained as provenance for supported samples and is the next input for exact geometry recovery, but Phase 3 intentionally uses only graph-cache evidence.
+
+Generate the deterministic source-versus-target audit report with:
+
+```bash
+python -m romerodsl audit-topology-extraction \
+  --graph-cache C:/Users/gh0st/Documents/RomeroGan/romerogan_v2/data/graph_cache_v1 \
+  --output reports/phase3_topology_extraction_report.json \
+  --limit 25
+```
+
+The report compares source and DSL room counts, connections, connected components, branch signals, cycle counts, and spatial shape complexity. It also records supported/rejected samples and lists information preserved, approximated, and unavailable. The checked-in representative report is evidence about extraction coverage, not model-generation quality.
+
+Dataset classes are intentionally separate:
+
+- `extracted`: grounded in graph-cache/source-map evidence.
+- `synthetic`: procedurally generated and validated, including the legacy canonical extractor.
+- `hand-authored`: deliberate compiler fixtures such as the Phase 1 and Phase 2 examples.
+
 
 Audit the full graph cache before training so the dataset shape is explicit:
 
@@ -236,7 +268,8 @@ The compiler may make valid geometry from those decisions, but it should not inv
 8. v0.8: Stricter playability validation: concrete ZDoom key/lock mechanics, route-gated progression checks, template-leak detection, multi-prompt evaluation, full-dataset stratified SFT rebuild, and no-repair retraining.
 9. v0.9: Gemma 4 E4B no-repair zero-shot/one-shot experiments and light QLoRA setup. This phase proved Gemma has stronger semantic planning than the earlier Qwen slice, but raw zero-shot/one-shot output was still invalid under the DSL contract.
 10. v0.10: Clean Gemma-light rebuild after fixing multi-key self-connections and adding SFT quality gates. The final clean adapter emits valid JSON and follows the BFG/yellow-gate route better, but still fails strict DSL when it omits a requested red key and collapses explicit eight-room prompts to six spaces.
-11. Next: tighten no-repair eval for requested key colors and requested room counts, add more varied eight-room/multi-key golden examples, rebuild SFT, and run a targeted shorter fine-tune before moving on to richer geometry layers.
+11. v0.11 / Phase 3: topology-preserving graph-cache extraction, explicit extracted/synthetic/hand-authored provenance, source-versus-DSL topology audit, and honest rejection of unsupported source maps. Exact linedef geometry remains a future source-WAD parsing task.
+12. Next: tighten no-repair eval for requested key colors and requested room counts, add more varied eight-room/multi-key golden examples, rebuild SFT, and run a targeted shorter fine-tune before moving on to richer geometry layers.
 
 ## Repository layout
 

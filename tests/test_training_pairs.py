@@ -11,6 +11,7 @@ from romerodsl.extraction import (
     build_dsl_training_cache,
     dsl_from_graph_sample,
     prompt_variants_from_graph_sample,
+    topology_preserving_dsl_from_graph_sample,
     training_record_from_graph_sample,
 )
 from romerodsl.schema import validate_document
@@ -84,6 +85,42 @@ def basic_route_sample() -> dict:
                 "yellow": {"keys": 0, "locks": 0, "key_reachable_without_locks": False, "has_key_and_lock": False},
             },
             "has_keyed_route_signal": False,
+        },
+    }
+
+
+
+
+def topology_sample() -> dict:
+    sectors = [
+        {"id": index, "floor_height": 0, "ceiling_height": 128, "floor_texture": "FLOOR0_1", "ceiling_texture": "CEIL3_5", "center": [index * 128, 0], "vertex_count": 4}
+        for index in range(6)
+    ]
+    edges = [
+        {"linedef_id": 1, "from_sector": 0, "to_sector": 1, "kind": "door", "lock": None, "passable": True},
+        {"linedef_id": 2, "from_sector": 1, "to_sector": 2, "kind": "door", "lock": None, "passable": True},
+        {"linedef_id": 3, "from_sector": 2, "to_sector": 3, "kind": "door", "lock": None, "passable": True},
+        {"linedef_id": 4, "from_sector": 3, "to_sector": 4, "kind": "door", "lock": None, "passable": True},
+        {"linedef_id": 5, "from_sector": 4, "to_sector": 2, "kind": "door", "lock": None, "passable": True},
+        {"linedef_id": 6, "from_sector": 2, "to_sector": 5, "kind": "door", "lock": "blue", "passable": True},
+    ]
+    return {
+        "source_wad": "C:/wads/topology.wad",
+        "family": "topology",
+        "map": "MAP01",
+        "counts": {"sectors": 6, "sector_connections": 6, "doors": 6, "locked_doors": 1, "keys": 1, "player_starts": 1, "exit_sectors": 1},
+        "theme_guess": "techbase",
+        "height_levels": [0, 64],
+        "things_by_category": {"monsters": 4, "weapons": 1, "keys": 1},
+        "sectors": sectors,
+        "sector_roles": {"0": ["start"], "1": ["blue_key", "monsters"], "3": ["monsters"], "5": ["exit"]},
+        "edges": edges,
+        "keys": [{"thing_id": 1, "type": 5, "category": "keys", "sector": 1, "color": "blue"}],
+        "progression": {
+            "start_sectors": [0], "exit_sectors": [5], "start_to_exit_path": [0, 1, 2, 5],
+            "start_reaches_exit": True, "exit_reachable_without_locks": False, "exit_requires_any_lock": True,
+            "colors": {"blue": {"keys": 1, "locks": 1, "key_reachable_without_locks": True, "has_key_and_lock": True}, "red": {"keys": 0, "locks": 0, "key_reachable_without_locks": False, "has_key_and_lock": False}, "yellow": {"keys": 0, "locks": 0, "key_reachable_without_locks": False, "has_key_and_lock": False}},
+            "has_keyed_route_signal": True,
         },
     }
 
@@ -269,6 +306,34 @@ class ExtractionTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertTrue((output / "manifest.jsonl").exists())
             self.assertTrue((output / "samples" / "dsl_00000.json").exists())
+    def test_topology_mode_preserves_branch_cycle_and_metadata(self) -> None:
+        document = topology_preserving_dsl_from_graph_sample(topology_sample())
+        result = validate_document(document)
+        self.assertTrue(result.valid, result.errors)
+        self.assertEqual(document["metadata"]["dataset_class"], "extracted")
+        self.assertEqual(document["metadata"]["extraction_mode"], "topology_preserving")
+        self.assertGreaterEqual(len(document["spaces"]), 4)
+        self.assertGreaterEqual(len(document["connections"]), 5)
+        self.assertEqual(document["progression"]["gates"][0]["key"], "blue")
+        self.assertEqual(document["metadata"]["source_topology"]["cycle_count"], 1)
+        self.assertGreaterEqual(document["metadata"]["source_topology"]["branch_nodes"], 1)
+
+    def test_topology_training_cache_labels_extracted_and_reports_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            graph_cache = root / "graph_cache"
+            samples_dir = graph_cache / "samples"
+            samples_dir.mkdir(parents=True)
+            (samples_dir / "topology_MAP01.json").write_text(json.dumps(topology_sample()) + "\n", encoding="utf-8")
+            (graph_cache / "manifest.jsonl").write_text(json.dumps({"sample": "samples/topology_MAP01.json"}) + "\n", encoding="utf-8")
+            output = root / "dsl_training_topology"
+            summary = build_dsl_training_cache(graph_cache, output, mode="topology_preserving")
+            self.assertEqual(summary["extraction_mode"], "topology_preserving")
+            record = json.loads((output / "samples" / "dsl_00000.json").read_text(encoding="utf-8"))
+            self.assertEqual(record["labels"]["dataset_class"], "extracted")
+            self.assertEqual(record["labels"]["extraction_mode"], "topology_preserving")
+            self.assertEqual(record["features"]["source_cycle_count"], 1)
+            self.assertEqual(record["features"]["target_cycle_count"], 1)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from romerodsl.compiler import compile_to_plan, compile_to_wad
-from romerodsl.extraction import audit_graph_cache, build_dsl_training_cache
+from romerodsl.extraction import (
+    LEGACY_EXTRACTION_MODE,
+    TOPOLOGY_EXTRACTION_MODE,
+    audit_graph_cache,
+    audit_topology_extraction,
+    build_dsl_training_cache,
+)
 from romerodsl.finetune import build_sft_jsonl, validate_sft_jsonl
 from romerodsl.qwen_lora import SFTTrainConfig, train_qwen_lora, training_run_plan
 from romerodsl.schema import validate_document
@@ -38,6 +44,11 @@ def main(argv: list[str] | None = None) -> int:
     training_parser.add_argument("--output", "-o", type=Path, required=True)
     training_parser.add_argument("--strict-only", action="store_true")
     training_parser.add_argument("--prompt-variants-per-sample", type=int, default=1)
+    training_parser.add_argument(
+        "--extraction-mode",
+        choices=[LEGACY_EXTRACTION_MODE, TOPOLOGY_EXTRACTION_MODE],
+        default=LEGACY_EXTRACTION_MODE,
+    )
 
     audit_parser = subparsers.add_parser(
         "audit-graph-cache",
@@ -45,6 +56,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     audit_parser.add_argument("--graph-cache", type=Path, required=True)
     audit_parser.add_argument("--output", "-o", type=Path)
+
+    extraction_audit_parser = subparsers.add_parser(
+        "audit-topology-extraction",
+        help="compare grouped source topology with topology-preserving DSL output",
+    )
+    extraction_audit_parser.add_argument("--graph-cache", type=Path, required=True)
+    extraction_audit_parser.add_argument("--output", "-o", type=Path, required=True)
+    extraction_audit_parser.add_argument("--limit", type=int, default=25)
 
     sft_parser = subparsers.add_parser(
         "build-sft-jsonl",
@@ -94,9 +113,12 @@ def main(argv: list[str] | None = None) -> int:
             args.output,
             args.strict_only,
             args.prompt_variants_per_sample,
+            args.extraction_mode,
         )
     if args.command == "audit-graph-cache":
         return _audit_graph_cache_command(args.graph_cache, args.output)
+    if args.command == "audit-topology-extraction":
+        return _audit_topology_extraction_command(args.graph_cache, args.output, args.limit)
     if args.command == "build-sft-jsonl":
         return _build_sft_jsonl_command(args.training_cache, args.output)
     if args.command == "validate-sft-jsonl":
@@ -141,12 +163,14 @@ def _build_training_pairs_command(
     output: Path,
     strict_only: bool,
     prompt_variants_per_sample: int,
+    extraction_mode: str,
 ) -> int:
     summary = build_dsl_training_cache(
         graph_cache,
         output,
         strict_only=strict_only,
         prompt_variants_per_sample=prompt_variants_per_sample,
+        mode=extraction_mode,
     )
     print(f"wrote: {output}")
     print(json.dumps(summary, indent=2))
@@ -159,6 +183,15 @@ def _audit_graph_cache_command(graph_cache: Path, output: Path | None) -> int:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(summary, indent=2, allow_nan=False) + "\n", encoding="utf-8")
         print(f"wrote: {output}")
+    print(json.dumps(summary, indent=2))
+    return 0
+
+
+def _audit_topology_extraction_command(graph_cache: Path, output: Path, limit: int) -> int:
+    summary = audit_topology_extraction(graph_cache, limit=limit)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(summary, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+    print(f"wrote: {output}")
     print(json.dumps(summary, indent=2))
     return 0
 

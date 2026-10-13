@@ -1,0 +1,308 @@
+{
+  "schema": "romerodsl_topology_extraction_audit_v1",
+  "source_graph_cache": "C:\\Users\\gh0st\\Documents\\RomeroGan\\romerogan_v2\\data\\graph_cache_v1",
+  "requested_samples": 25,
+  "audited_samples": 25,
+  "supported_samples": 10,
+  "rejected_samples": 15,
+  "rejection_reasons": {
+    "source sector graph has no traversable start-to-exit route": 13,
+    "graph cache does not identify both start and exit sectors": 2
+  },
+  "representative_comparisons": [
+    {
+      "source_sample": "samples/!HORDES2_MAP04.json",
+      "source_wad": "C:\\Users\\gh0st\\Documents\\RomeroGan\\extracted_wads\\DOOM2Processed\\!HORDES2\\!HORDES2.WAD",
+      "family": "!HORDES2",
+      "map": "MAP04",
+      "dataset_class": "extracted",
+      "source": {
+        "room_count": 95,
+        "connection_count": 77,
+        "connected_components": 21,
+        "branch_nodes": 9,
+        "cycle_count": 3,
+        "largest_room_sector_count": 25
+      },
+      "dsl": {
+        "room_count": 95,
+        "connection_count": 77,
+        "connected_components": 21,
+        "branch_nodes": 10,
+        "cycle_count": 3,
+        "shape_count": 4
+      },
+      "preserved": {
+        "branch_signal": true,
+        "cycle_signal": true,
+        "connected_signal": true
+      }
+    },
+    {
+      "source_sample": "samples/001_MAP01.json",
+      "source_wad": "C:\\Users\\gh0st\\Documents\\RomeroGan\\extracted_wads\\DOOM2Processed\\001\\001.wad",
+      "family": "001",
+      "map": "MAP01",
+      "dataset_class": "extracted",
+      "source": {
+        "room_count": 11,
+        "connection_count": 10,
+        "connected_components": 1,
+        "branch_nodes": 0,
+        "cycle_count": 0,
+        "largest_room_sector_count": 2
+      },
+      "dsl": {
+        "room_count": 11,
+        "connection_count": 10,
+        "connected_components": 1,
+        "branch_nodes": 0,
+        "cycle_count": 0,
+        "shape_count": 1
+      },
+      "preserved": {
+        "branch_signal": true,
+        "cycle_signal": true,
+        "connected_signal": true
+      }
+    },
+    {
+      "source_sample": "samples/002_MAP02.json",
+      "source_wad": "C:\\Users\\gh0st\\Documents\\RomeroGan\\extracted_wads\\DOOM2Processed\\002\\002.wad",
+      "family": "002",
+      "map": "MAP02",
+      "dataset_class": "extracted",
+      "source": {
+        "room_count": 7,
+        "connection_count": 6,
+        "connected_components": 1,
+        "branch_nodes": 0,
+        "cycle_count": 0,
+        "largest_room_sector_count": 5
+      },
+      "dsl": {
+        "room_count": 7,
+        "connection_count": 6,
+        "connected_components": 1,
+        "branch_nodes": 1,
+        "cycle_count": 0,
+        "shape_count": 2
+      },
+      "preserved": {
+        "branch_signal": false,
+        "cycle_signal": true,
+        "connected_signal": true
+      }
+    },
+    {
+      "source_sample": "samples/003_MAP03.json",
+      "source_wad": "C:\\Users\\gh0st\\Documents\\RomeroGan\\extracted_wads\\DOOM2Processed\\003\\003.wad",
+      "family": "003",
+      "map": "MAP03",
+      "dataset_class": "extracted",
+      "source": {
+        "room_count": 3,
+        "connection_count": 2,
+        "connected_components": 1,
+        "branch_nodes": 0,
+        "cycle_count": 0,
+        "largest_room_sector_count": 1
+      },
+      "dsl": {
+        "room_count": 3,
+        "connection_count": 2,
+        "connected_components": 1,
+        "branch_nodes": 0,
+        "cycle_count": 0,
+        "shape_count": 1
+      },
+      "preserved": {
+        "branch_signal": true,
+        "cycle_signal": true,
+        "connected_signal": true
+      }
+    },
+    {
+      "source_sample": "samples/05_MAP05.json",
+      "source_wad": "C:\\Users\\gh0st\\Documents\\RomeroGan\\extracted_wads\\DOOM2Processed\\05\\05.WAD",
+      "family": "05",
+      "map": "MAP05",
+      "dataset_class": "extracted",
+      "source": {
+        "room_count": 210,
+        "connection_count": 176,
+        "connected_components": 43,
+        "branch_nodes": 21,
+        "cycle_count": 9,
+        "largest_room_sector_count": 8
+      },
+      "dsl": {
+        "room_count": 210,
+        "connection_count": 176,
+        "connected_components": 43,
+        "branch_nodes": 26,
+        "cycle_count": 9,
+        "shape_count": 4
+      },
+      "preserved": {
+        "branch_signal": true,
+        "cycle_signal": true,
+        "connected_signal": true
+      }
+    },
+    {
+      "source_sample": "samples/06_MAP06.json",
+      "source_wad": "C:\\Users\\gh0st\\Documents\\RomeroGan\\extracted_wads\\DOOM2Processed\\06\\06.WAD",
+      "family": "06",
+      "map": "MAP06",
+      "dataset_class": "extracted",
+      "source": {
+        "room_count": 182,
+        "connection_count": 153,
+        "connected_components": 39,
+        "branch_nodes": 20,
+        "cycle_count": 10,
+        "largest_room_sector_count": 28
+      },
+      "dsl": {
+        "room_count": 182,
+        "connection_count": 153,
+        "connected_components": 39,
+        "branch_nodes": 21,
+        "cycle_count": 10,
+        "shape_count": 4
+      },
+      "preserved": {
+        "branch_signal": true,
+        "cycle_signal": true,
+        "connected_signal": true
+      }
+    },
+    {
+      "source_sample": "samples/1_MAP01.json",
+      "source_wad": "C:\\Users\\gh0st\\Documents\\RomeroGan\\extracted_wads\\DOOM2Processed\\1\\1.WAD",
+      "family": "1",
+      "map": "MAP01",
+      "dataset_class": "extracted",
+      "source": {
+        "room_count": 24,
+        "connection_count": 22,
+        "connected_components": 2,
+        "branch_nodes": 0,
+        "cycle_count": 0,
+        "largest_room_sector_count": 1
+      },
+      "dsl": {
+        "room_count": 24,
+        "connection_count": 22,
+        "connected_components": 2,
+        "branch_nodes": 0,
+        "cycle_count": 0,
+        "shape_count": 1
+      },
+      "preserved": {
+        "branch_signal": true,
+        "cycle_signal": true,
+        "connected_signal": true
+      }
+    },
+    {
+      "source_sample": "samples/1redux_MAP01.json",
+      "source_wad": "C:\\Users\\gh0st\\Documents\\RomeroGan\\extracted_wads\\DOOM2Processed\\1redux\\1redux.wad",
+      "family": "1redux",
+      "map": "MAP01",
+      "dataset_class": "extracted",
+      "source": {
+        "room_count": 170,
+        "connection_count": 166,
+        "connected_components": 16,
+        "branch_nodes": 23,
+        "cycle_count": 12,
+        "largest_room_sector_count": 5
+      },
+      "dsl": {
+        "room_count": 170,
+        "connection_count": 166,
+        "connected_components": 16,
+        "branch_nodes": 36,
+        "cycle_count": 12,
+        "shape_count": 4
+      },
+      "preserved": {
+        "branch_signal": true,
+        "cycle_signal": true,
+        "connected_signal": true
+      }
+    },
+    {
+      "source_sample": "samples/1redux_MAP02.json",
+      "source_wad": "C:\\Users\\gh0st\\Documents\\RomeroGan\\extracted_wads\\DOOM2Processed\\1redux\\1redux.wad",
+      "family": "1redux",
+      "map": "MAP02",
+      "dataset_class": "extracted",
+      "source": {
+        "room_count": 145,
+        "connection_count": 148,
+        "connected_components": 2,
+        "branch_nodes": 24,
+        "cycle_count": 5,
+        "largest_room_sector_count": 4
+      },
+      "dsl": {
+        "room_count": 145,
+        "connection_count": 148,
+        "connected_components": 2,
+        "branch_nodes": 27,
+        "cycle_count": 5,
+        "shape_count": 4
+      },
+      "preserved": {
+        "branch_signal": true,
+        "cycle_signal": true,
+        "connected_signal": true
+      }
+    },
+    {
+      "source_sample": "samples/1redux_MAP03.json",
+      "source_wad": "C:\\Users\\gh0st\\Documents\\RomeroGan\\extracted_wads\\DOOM2Processed\\1redux\\1redux.wad",
+      "family": "1redux",
+      "map": "MAP03",
+      "dataset_class": "extracted",
+      "source": {
+        "room_count": 216,
+        "connection_count": 212,
+        "connected_components": 13,
+        "branch_nodes": 42,
+        "cycle_count": 9,
+        "largest_room_sector_count": 5
+      },
+      "dsl": {
+        "room_count": 216,
+        "connection_count": 212,
+        "connected_components": 13,
+        "branch_nodes": 54,
+        "cycle_count": 9,
+        "shape_count": 4
+      },
+      "preserved": {
+        "branch_signal": true,
+        "cycle_signal": true,
+        "connected_signal": true
+      }
+    }
+  ],
+  "information_preserved": [
+    "grouped sector connectivity",
+    "room-level branches and cycles represented by DSL connections",
+    "coarse room scale, aspect, shape, and height bands",
+    "source-associated entities and route-supported key/lock dependencies"
+  ],
+  "information_approximated": [
+    "room boundaries, exact portal positions, and encounter placement",
+    "room roles when several source signals share a group"
+  ],
+  "information_unavailable_without_source_wad_reading": [
+    "exact linedef vertex loops and wall coordinates",
+    "full thing coordinates and precise spatial combat layout"
+  ]
+}
