@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import random
@@ -29,6 +30,7 @@ class SFTTrainConfig:
     output_dir: Path
     model_name: str = DEFAULT_QWEN_MODEL
     validation_fraction: float = 0.08
+    test_fraction: float = 0.0
     seed: int = 1337
     max_length: int = 4096
     batch_size: int = 1
@@ -45,6 +47,7 @@ class SFTTrainConfig:
     lora_dropout: float = 0.05
     bf16: bool = True
     load_in_4bit: bool = False
+    overlength_policy: str = "reject"
 
 
 def load_sft_records(path: Path) -> list[dict[str, Any]]:
@@ -66,20 +69,184 @@ def load_sft_records(path: Path) -> list[dict[str, Any]]:
     return records
 
 
-def split_records(
-    records: list[dict[str, Any]], *, validation_fraction: float, seed: int
-) -> dict[str, list[dict[str, Any]]]:
-    """Deterministically split records into train/validation partitions."""
+def record_group_key(record: dict[str, Any]) -> str:
+    """Return a leakage-resistant design-family key for one SFT record."""
 
-    if not 0 <= validation_fraction < 1:
-        raise ValueError("validation_fraction must be in [0, 1)")
-    indices = list(range(len(records)))
-    random.Random(seed).shuffle(indices)
-    validation_count = 0 if len(records) == 1 else max(1, round(len(records) * validation_fraction))
-    validation_indices = set(indices[:validation_count])
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    labels = metadata.get("labels") if isinstance(metadata.get("labels"), dict) else {}
+    dataset_class = str(labels.get("dataset_class") or metadata.get("dataset_class") or "unknown")
+    source_wad = metadata.get("source_wad")
+    source_sample = metadata.get("source_sample")
+    map_name = metadata.get("map") or labels.get("map")
+    if source_wad:
+        return f"extracted-wad:{source_wad}|map:{map_name or 'unknown'}"
+    if source_sample and dataset_class == "extracted":
+        return f"extracted-sample:{source_sample}|map:{map_name or 'unknown'}"
+
+    design_family = labels.get("design_family") or metadata.get("design_family")
+    if design_family and dataset_class in {"synthetic", "hand-authored"}:
+        return f"{dataset_class}-family:{design_family}"
+    generator_seed = labels.get("generator_seed") or metadata.get("generator_seed")
+    if generator_seed is None and isinstance(source_sample, str) and dataset_class == "synthetic":
+        generator_seed = source_sample
+    if generator_seed is not None and dataset_class == "synthetic":
+        return f"synthetic-seed:{generator_seed}"
+    if source_sample:
+        return f"{dataset_class}-sample:{source_sample}"
+
+    stable_payload = {
+        "dataset_class": dataset_class,
+        "messages": record.get("messages"),
+        "title": metadata.get("title"),
+    }
+    digest = hashlib.sha256(
+        json.dumps(stable_payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()[:20]
+    return f"{dataset_class}-anonymous:{digest}"
+
+
+def split_records(
+    records: list[dict[str, Any]], *, validation_fraction: float, seed: int, test_fraction: float = 0.0
+) -> dict[str, list[dict[str, Any]]]:
+    """Split whole design groups, never individual prompt variants."""
+
+    if not 0 <= validation_fraction < 1 or not 0 <= test_fraction < 1:
+        raise ValueError("validation_fraction and test_fraction must be in [0, 1)")
+    if validation_fraction + test_fraction >= 1 and len(records) > 1:
+        raise ValueError("validation_fraction + test_fraction must be less than 1")
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        groups.setdefault(record_group_key(record), []).append(record)
+    group_items = list(groups.items())
+    random.Random(seed).shuffle(group_items)
+    validation_target = 0 if len(records) <= 1 else max(1, round(len(records) * validation_fraction))
+    test_target = 0 if len(records) <= 1 or test_fraction == 0 else max(1, round(len(records) * test_fraction))
+
+    def take_groups(target: int, available: list[tuple[str, list[dict[str, Any]]]]) -> set[str]:
+        selected: set[str] = set()
+        selected_size = 0
+        for key, group in available:
+            if selected_size >= target:
+                break
+            current_distance = abs(selected_size - target)
+            next_distance = abs(selected_size + len(group) - target)
+            if not selected or next_distance <= current_distance:
+                selected.add(key)
+                selected_size += len(group)
+        return selected
+
+    validation_keys = take_groups(validation_target, group_items)
+    remaining_groups = [(key, group) for key, group in group_items if key not in validation_keys]
+    test_keys = take_groups(test_target, remaining_groups)
+    partitions = {
+        "train": [record for record in records if record_group_key(record) not in validation_keys | test_keys],
+        "validation": [record for record in records if record_group_key(record) in validation_keys],
+    }
+    if test_fraction:
+        partitions["test"] = [record for record in records if record_group_key(record) in test_keys]
+    return partitions
+
+
+def split_group_report(splits: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    """Report partition groups and assert no design family crosses the split."""
+
+    partition_keys = {
+        partition: sorted({record_group_key(record) for record in records})
+        for partition, records in splits.items()
+    }
+    locations: dict[str, set[str]] = {}
+    for partition, keys in partition_keys.items():
+        for key in keys:
+            locations.setdefault(key, set()).add(partition)
+    overlap = sorted(key for key, partitions in locations.items() if len(partitions) > 1)
+    if overlap:
+        raise ValueError(f"design groups cross dataset partitions: {overlap[:5]}")
     return {
-        "train": [record for index, record in enumerate(records) if index not in validation_indices],
-        "validation": [record for index, record in enumerate(records) if index in validation_indices],
+        "strategy": "grouped_design_family",
+        "partition_group_counts": {partition: len(keys) for partition, keys in partition_keys.items()},
+        "partition_group_keys": partition_keys,
+        "train_groups": len(partition_keys.get("train", [])),
+        "validation_groups": len(partition_keys.get("validation", [])),
+        "test_groups": len(partition_keys.get("test", [])),
+        "cross_partition_groups": overlap,
+        "train_group_keys": partition_keys.get("train", []),
+        "validation_group_keys": partition_keys.get("validation", []),
+        "test_group_keys": partition_keys.get("test", []),
+    }
+
+
+def _token_ids(tokenizer: Any, text: str) -> list[int]:
+    encoded = tokenizer(text, add_special_tokens=False)
+    values = encoded["input_ids"] if isinstance(encoded, dict) else encoded.input_ids
+    if hasattr(values, "tolist"):
+        values = values.tolist()
+    while values and isinstance(values[0], list):
+        values = values[0]
+    return list(values)
+
+
+def build_tokenization_diagnostics(
+    records: list[dict[str, Any]], tokenizer: Any, *, max_length: int
+) -> dict[str, Any]:
+    """Measure full, prompt, target, and safely discardable token lengths."""
+
+    if max_length <= 0:
+        raise ValueError("max_length must be positive")
+    examples: list[dict[str, Any]] = []
+    total_target = 0
+    discarded_target = 0
+    critical_truncations = 0
+    for index, record in enumerate(records):
+        messages = record.get("messages")
+        if not isinstance(messages, list) or len(messages) < 3:
+            raise ValueError(f"record {index} has no complete chat messages")
+        full_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
+        prompt_text = tokenizer.apply_chat_template(messages[:-1], tokenize=False, add_generation_prompt=True)
+        full_ids = _token_ids(tokenizer, full_text)
+        prompt_ids = _token_ids(tokenizer, prompt_text)
+        prompt_length = len(prompt_ids)
+        total_length = len(full_ids)
+        target_length = max(0, total_length - prompt_length)
+        kept_target = max(0, min(total_length, max_length) - min(prompt_length, max_length))
+        target_discarded = max(0, target_length - kept_target)
+        assistant_content = messages[-1].get("content") if isinstance(messages[-1], dict) else ""
+        critical_json = False
+        if isinstance(assistant_content, str):
+            try:
+                json.loads(assistant_content)
+                critical_json = True
+            except json.JSONDecodeError:
+                critical_json = False
+        if critical_json and target_discarded:
+            critical_truncations += 1
+        total_target += target_length
+        discarded_target += target_discarded
+        examples.append(
+            {
+                "index": index,
+                "prompt_tokens": prompt_length,
+                "target_tokens": target_length,
+                "total_sequence_tokens": total_length,
+                "target_tokens_discarded": target_discarded,
+                "overlength": total_length > max_length,
+                "critical_json_completion": critical_json,
+                "critical_json_truncated": critical_json and target_discarded > 0,
+            }
+        )
+    overlength = [example for example in examples if example["overlength"]]
+    return {
+        "max_length": max_length,
+        "records": len(records),
+        "prompt_token_lengths": [example["prompt_tokens"] for example in examples],
+        "target_token_lengths": [example["target_tokens"] for example in examples],
+        "total_sequence_lengths": [example["total_sequence_tokens"] for example in examples],
+        "overlength_examples": len(overlength),
+        "overlength_indices": [example["index"] for example in overlength],
+        "supervised_target_tokens": total_target,
+        "supervised_target_tokens_discarded": discarded_target,
+        "fraction_of_supervised_target_tokens_discarded": discarded_target / total_target if total_target else 0.0,
+        "truncated_critical_json_completions": critical_truncations,
+        "examples": examples,
     }
 
 
@@ -91,6 +258,10 @@ def training_run_plan(config: SFTTrainConfig) -> dict[str, Any]:
         "sft_jsonl": str(config.sft_jsonl).replace("\\", "/"),
         "output_dir": str(config.output_dir).replace("\\", "/"),
         "max_length": config.max_length,
+        "overlength_policy": config.overlength_policy,
+        "split_strategy": "grouped_design_family",
+        "validation_fraction": config.validation_fraction,
+        "test_fraction": config.test_fraction,
         "max_steps": config.max_steps,
         "epochs": config.epochs,
         "batch_size": config.batch_size,
@@ -119,15 +290,37 @@ def train_qwen_lora(config: SFTTrainConfig) -> dict[str, Any]:
     from torch.utils.data import DataLoader
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, get_cosine_schedule_with_warmup
 
+    if config.overlength_policy not in {"reject", "preserve_target"}:
+        raise ValueError("overlength_policy must be 'reject' or 'preserve_target'")
     config.output_dir.mkdir(parents=True, exist_ok=True)
     (config.output_dir / "train_config.json").write_text(
         json.dumps(_jsonable_config(config), indent=2) + "\n", encoding="utf-8"
     )
     records = load_sft_records(config.sft_jsonl)
-    splits = split_records(records, validation_fraction=config.validation_fraction, seed=config.seed)
+    splits = split_records(
+        records,
+        validation_fraction=config.validation_fraction,
+        test_fraction=config.test_fraction,
+        seed=config.seed,
+    )
     tokenizer = AutoTokenizer.from_pretrained(config.model_name, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    tokenization = build_tokenization_diagnostics(records, tokenizer, max_length=config.max_length)
+    (config.output_dir / "tokenization_diagnostics.json").write_text(
+        json.dumps(tokenization, indent=2) + "\n", encoding="utf-8"
+    )
+    if config.overlength_policy == "reject" and tokenization["overlength_examples"]:
+        raise ValueError(
+            "overlength SFT examples rejected; see tokenization_diagnostics.json "
+            f"({tokenization['overlength_examples']} examples, "
+            f"{tokenization['truncated_critical_json_completions']} critical JSON completions truncated)"
+        )
+    if tokenization["truncated_critical_json_completions"]:
+        raise ValueError(
+            "critical JSON completions would be truncated; increase data quality or use a larger "
+            "verified max_length, not silent truncation"
+        )
 
     dtype = torch.bfloat16 if config.bf16 and torch.cuda.is_available() else torch.float16
     model_kwargs: dict[str, Any] = {
@@ -161,8 +354,12 @@ def train_qwen_lora(config: SFTTrainConfig) -> dict[str, Any]:
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
-    train_dataset = _ChatDataset(splits["train"], tokenizer, config.max_length)
-    val_dataset = _ChatDataset(splits["validation"], tokenizer, config.max_length) if splits["validation"] else None
+    train_dataset = _ChatDataset(splits["train"], tokenizer, config.max_length, config.overlength_policy)
+    val_dataset = (
+        _ChatDataset(splits["validation"], tokenizer, config.max_length, config.overlength_policy)
+        if splits["validation"]
+        else None
+    )
 
     def collate(batch: list[dict[str, Any]]) -> dict[str, Any]:
         input_ids = pad_sequence(
@@ -192,6 +389,9 @@ def train_qwen_lora(config: SFTTrainConfig) -> dict[str, Any]:
         "records": len(records),
         "train_records": len(splits["train"]),
         "validation_records": len(splits["validation"]),
+        "test_records": len(splits.get("test", [])),
+        "split_report": split_group_report(splits),
+        "tokenization": tokenization,
         "steps": [],
     }
 
@@ -258,10 +458,11 @@ def _resolve_lora_target_modules(model: Any, model_name: str) -> list[str]:
 
 
 class _ChatDataset:
-    def __init__(self, records: list[dict[str, Any]], tokenizer: Any, max_length: int) -> None:
+    def __init__(self, records: list[dict[str, Any]], tokenizer: Any, max_length: int, overlength_policy: str) -> None:
         self.records = records
         self.tokenizer = tokenizer
         self.max_length = max_length
+        self.overlength_policy = overlength_policy
 
     def __len__(self) -> int:
         return len(self.records)
@@ -276,15 +477,29 @@ class _ChatDataset:
         prompt_text = self.tokenizer.apply_chat_template(
             messages[:-1], tokenize=False, add_generation_prompt=True
         )
-        full = self.tokenizer(full_text, truncation=True, max_length=self.max_length, return_tensors="pt")
-        prompt = self.tokenizer(prompt_text, truncation=True, max_length=self.max_length, return_tensors="pt")
-        input_ids = full["input_ids"][0]
-        labels = input_ids.clone()
-        prompt_length = min(prompt["input_ids"].shape[1], labels.shape[0])
+        full_ids = _token_ids(self.tokenizer, full_text)
+        prompt_ids = _token_ids(self.tokenizer, prompt_text)
+        prompt_length = len(prompt_ids)
+        target_ids = full_ids[prompt_length:]
+        if len(target_ids) > self.max_length:
+            raise ValueError(
+                f"record {index} target has {len(target_ids)} tokens, exceeding max_length={self.max_length}; "
+                "complete JSON targets cannot be truncated"
+            )
+        if len(full_ids) > self.max_length:
+            if self.overlength_policy != "preserve_target":
+                raise ValueError(f"record {index} exceeds max_length without an explicit preserve_target policy")
+            prompt_keep = self.max_length - len(target_ids)
+            input_ids = prompt_ids[-prompt_keep:] + target_ids if prompt_keep else target_ids
+            prompt_length = prompt_keep
+        else:
+            input_ids = full_ids
+        input_tensor = torch.tensor(input_ids, dtype=torch.long)
+        labels = input_tensor.clone()
         labels[:prompt_length] = -100
         if torch.all(labels == -100):
-            labels[-1] = input_ids[-1]
-        return {"input_ids": input_ids, "labels": labels}
+            raise ValueError(f"record {index} has no supervised target tokens after tokenization")
+        return {"input_ids": input_tensor, "labels": labels}
 
 
 def _evaluate_loss(model: Any, loader: Any, device: Any) -> float:

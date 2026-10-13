@@ -56,6 +56,11 @@ def sft_record_from_training_record(record: dict[str, Any]) -> dict[str, Any]:
     assistant_dsl = canonical_sft_dsl(dsl)
     labels = record.get("labels") if isinstance(record.get("labels"), dict) else {}
     features = record.get("features") if isinstance(record.get("features"), dict) else {}
+    source_metadata: dict[str, Any] = (
+        dict(dsl["metadata"]) if isinstance(dsl.get("metadata"), dict) else {}
+    )
+    generator_seed = record.get("generator_seed") or labels.get("generator_seed") or source_metadata.get("generator_seed")
+    design_family = record.get("design_family") or labels.get("design_family") or source_metadata.get("design_family")
     assistant_content = json.dumps(assistant_dsl, indent=2, sort_keys=True, allow_nan=False)
     metrics = structural_metrics(assistant_dsl)
     return {
@@ -74,6 +79,8 @@ def sft_record_from_training_record(record: dict[str, Any]) -> dict[str, Any]:
             "features": features,
             "dataset_class": labels.get("dataset_class", "unknown"),
             "complexity_tier": labels.get("complexity_tier"),
+            "generator_seed": generator_seed,
+            "design_family": design_family,
             "prompt_length": len(prompt),
             "assistant_output_length": len(assistant_content),
             "structural_metrics": metrics,

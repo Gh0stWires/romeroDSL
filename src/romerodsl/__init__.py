@@ -12,12 +12,24 @@ from romerodsl.finetune import (
     sft_record_from_training_record,
     validate_sft_jsonl,
 )
-from romerodsl.qwen_lora import SFTTrainConfig, train_qwen_lora, training_run_plan
+from romerodsl.qwen_lora import (
+    SFTTrainConfig,
+    build_tokenization_diagnostics,
+    record_group_key,
+    split_group_report,
+    split_records,
+    train_qwen_lora,
+    training_run_plan,
+)
 from romerodsl.schema import ValidationReport, validate_document
 
 __all__ = [
     "ValidationReport",
     "SFTTrainConfig",
+    "build_tokenization_diagnostics",
+    "record_group_key",
+    "split_group_report",
+    "split_records",
     "build_dsl_training_cache",
     "build_sft_jsonl",
     "canonical_sft_dsl",

@@ -1,0 +1,40 @@
+{
+  "schema": "romerodsl_phase5_qwen_tokenization_v1",
+  "model": "Qwen/Qwen2.5-Coder-1.5B-Instruct",
+  "dataset": "build/v08_sft/romerodsl_sft_v08_full.jsonl",
+  "records": 23792,
+  "split": {
+    "seed": 1337,
+    "validation_fraction": 0.08,
+    "test_fraction": 0.02,
+    "train_records": 21412,
+    "validation_records": 1904,
+    "test_records": 476,
+    "train_groups": 5350,
+    "validation_groups": 476,
+    "test_groups": 119,
+    "cross_partition_groups": 0,
+    "grouping": "source WAD/map, synthetic seed/design family, or hand-authored family"
+  },
+  "tokenizer_diagnostics": {
+    "max_length_2400": {
+      "prompt_tokens": {"p50": 117, "p95": 147, "max": 148},
+      "target_tokens": {"p50": 1513, "p95": 1785, "max": 1787},
+      "total_sequence_tokens": {"p50": 1629, "p95": 1928, "max": 1935},
+      "overlength_examples": 0,
+      "supervised_target_tokens_discarded": 0,
+      "fraction_of_supervised_target_tokens_discarded": 0.0,
+      "truncated_critical_json_completions": 0
+    },
+    "max_length_4096": {
+      "prompt_tokens": {"p50": 117, "p95": 147, "max": 148},
+      "target_tokens": {"p50": 1513, "p95": 1785, "max": 1787},
+      "total_sequence_tokens": {"p50": 1629, "p95": 1928, "max": 1935},
+      "overlength_examples": 0,
+      "supervised_target_tokens_discarded": 0,
+      "fraction_of_supervised_target_tokens_discarded": 0.0,
+      "truncated_critical_json_completions": 0
+    }
+  },
+  "conclusion": "The full v0.8 dataset fits within max_length 2400 for the intended Qwen tokenizer; no target truncation or critical JSON loss was observed."
+}

@@ -14,7 +14,7 @@ This keeps room topology, height/elevation, and key progression as first-class l
 
 ## Current status
 
-This is v0.12: a GitHub-ready semantic Doom DSL pipeline plus early no-repair model-training experiments and a deterministic complexity-balanced curriculum builder. The compiler/validator path is solid enough to prove hand-authored maps with real rooms, keyed progression, BFG rewards, material validation, and UDMF/WAD export. The model path is improving, but it is not yet a solved `prompt -> playable WAD` system.
+This is v0.13: a GitHub-ready semantic Doom DSL pipeline plus early no-repair model-training experiments, a deterministic complexity-balanced curriculum builder, and leakage-resistant SFT splitting/token diagnostics. The compiler/validator path is solid enough to prove hand-authored maps with real rooms, keyed progression, BFG rewards, material validation, and UDMF/WAD export. The model path is improving, but it is not yet a solved `prompt -> playable WAD` system.
 
 The current best training run is the clean Gemma 4 E4B 4-bit QLoRA adapter at `runs/gemma4_e4b_v10_light_clean/adapter`. It trained on the rebuilt Gemma-light SFT set after fixing the multi-key self-connection bug and adding quality gates for self-connections, invalid materials, missing `spaces`, and route bypasses. The run completed 100 steps with final train loss `0.01657` and validation loss `0.01367` on the canonical SFT distribution.
 
@@ -222,7 +222,29 @@ python scripts/build_gemma_light_sft.py \
 ```
 
 Use `--synthetic-count basic=50 --synthetic-count expert=150` to deliberately overweight a tier. The output summary records tier and provenance distributions. Synthetic curriculum data is a controlled augmentation, not evidence that the model learned those layouts from human-authored WADs; keep that distinction in training and evaluation reports.
-## Build v0.8 supervised fine-tuning JSONL
+## Phase 5 leakage-resistant splitting and token safety
+
+Phase 5 replaces record-level random splitting with deterministic design-family splitting. Records are grouped by source WAD/map identity, synthetic generator seed or design family, and hand-authored family. Prompt variants from one source design therefore stay together. An optional `--test-fraction` holds out additional complete design groups for testing; `split_group_report()` fails if any group appears in multiple partitions.
+
+The Qwen trainer now tokenizes every chat record before loading the model and writes `tokenization_diagnostics.json` containing prompt, target, and total sequence lengths, overlength examples, discarded supervised target tokens, discarded-target fraction, and truncated critical JSON completion counts. The default `--overlength-policy reject` refuses overlength records. `--overlength-policy preserve_target` may trim only prompt-prefix tokens when the complete assistant JSON target still fits; targets are never silently truncated.
+
+```bash
+python -m romerodsl train-qwen-lora \
+  --sft-jsonl build/v08_sft/romerodsl_sft_v08_full.jsonl \
+  --output runs/qwen2p5_coder_1p5b_v08_grouped \
+  --max-length 2400 \
+  --validation-fraction 0.08 \
+  --test-fraction 0.02 \
+  --overlength-policy reject \
+  --batch-size 1 \
+  --gradient-accumulation-steps 8 \
+  --epochs 1
+```
+
+A validation score from this split measures held-out source designs, not alternate phrasings of designs already seen during training. Do not increase context length to hide truncation without checking 12GB GPU memory and the diagnostic report first.
+
+A real diagnostic against `Qwen/Qwen2.5-Coder-1.5B-Instruct` on all 23,792 v0.8 records found p50/p95/max total lengths of `1,629 / 1,928 / 1,935` tokens. At `--max-length 2400`, zero examples were overlength, zero supervised target tokens were discarded, and zero critical JSON completions were truncated. The reproducible report is `reports/phase5_qwen_tokenization_report.json`.
+
 
 ```bash
 python -m romerodsl build-sft-jsonl \
@@ -315,7 +337,8 @@ The compiler may make valid geometry from those decisions, but it should not inv
 10. v0.10: Clean Gemma-light rebuild after fixing multi-key self-connections and adding SFT quality gates. The final clean adapter emits valid JSON and follows the BFG/yellow-gate route better, but still fails strict DSL when it omits a requested red key and collapses explicit eight-room prompts to six spaces.
 11. v0.11 / Phase 3: topology-preserving graph-cache extraction, explicit extracted/synthetic/hand-authored provenance, source-versus-DSL topology audit, and honest rejection of unsupported source maps. Exact linedef geometry remains a future source-WAD parsing task.
 12. v0.12 / Phase 4: deterministic complexity-balanced synthetic curriculum with exact prompt/target room-count alignment, tiered topology, independent architectural/combat/progression variation, duplicate-layout rejection, and SFT distribution reporting. Synthetic examples remain separately labeled from extracted WAD examples.
-13. Next: tighten no-repair eval for requested key colors and requested room counts, add more varied eight-room/multi-key golden examples, rebuild SFT, and run a targeted shorter fine-tune before moving on to richer geometry layers.
+13. v0.13 / Phase 5: leakage-resistant design-family train/validation/test splitting, source/synthetic/hand-authored group keys, token-length diagnostics, critical JSON truncation detection, and explicit reject/preserve-target policies. No GPU training is started until the diagnostics are clean.
+14. Next: evaluate held-out source-design families with the no-repair suite before any new fine-tune.
 
 ## Repository layout
 
