@@ -13,6 +13,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from romerodsl.metrics import structural_metrics
 from romerodsl.schema import validate_document
 
 SFT_SCHEMA = "romerodsl_sft_v0.7"
@@ -55,12 +56,14 @@ def sft_record_from_training_record(record: dict[str, Any]) -> dict[str, Any]:
     assistant_dsl = canonical_sft_dsl(dsl)
     labels = record.get("labels") if isinstance(record.get("labels"), dict) else {}
     features = record.get("features") if isinstance(record.get("features"), dict) else {}
+    assistant_content = json.dumps(assistant_dsl, indent=2, sort_keys=True, allow_nan=False)
+    metrics = structural_metrics(assistant_dsl)
     return {
         "schema": SFT_SCHEMA,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
-            {"role": "assistant", "content": json.dumps(assistant_dsl, indent=2, sort_keys=True, allow_nan=False)},
+            {"role": "assistant", "content": assistant_content},
         ],
         "metadata": {
             "source_sample": record.get("source_sample"),
@@ -69,6 +72,11 @@ def sft_record_from_training_record(record: dict[str, Any]) -> dict[str, Any]:
             "map": record.get("map"),
             "labels": labels,
             "features": features,
+            "dataset_class": labels.get("dataset_class", "unknown"),
+            "complexity_tier": labels.get("complexity_tier"),
+            "prompt_length": len(prompt),
+            "assistant_output_length": len(assistant_content),
+            "structural_metrics": metrics,
         },
     }
 
@@ -116,6 +124,115 @@ def build_sft_jsonl(training_cache: Path, output: Path) -> dict[str, Any]:
     summary_path = output.with_suffix(output.suffix + ".summary.json")
     summary_path.write_text(json.dumps(summary, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     return summary
+
+
+def build_complexity_balanced_sft(
+    output: Path,
+    *,
+    seed: int = 20261020,
+    counts: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    """Build a validated synthetic curriculum SFT file with provenance reports."""
+
+    from romerodsl.extraction import (
+        SYNTHETIC_TIERS,
+        generate_synthetic_training_records,
+        structural_layout_signature,
+    )
+
+    requested = {tier: 4 for tier in SYNTHETIC_TIERS} if counts is None else dict(counts)
+    unknown = set(requested) - set(SYNTHETIC_TIERS)
+    if unknown:
+        raise ValueError(f"unsupported synthetic tiers: {sorted(unknown)}")
+    if any(not isinstance(value, int) or value < 0 for value in requested.values()):
+        raise ValueError("synthetic tier counts must be non-negative integers")
+
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    records: list[dict[str, Any]] = []
+    signatures: set[str] = set()
+    rejection_counts: Counter[str] = Counter()
+    for tier in SYNTHETIC_TIERS:
+        for training_record in generate_synthetic_training_records(
+            tier,
+            count=int(requested.get(tier, 0)),
+            seed=seed + SYNTHETIC_TIERS.index(tier) * 100003,
+        ):
+            signature = structural_layout_signature(training_record["dsl"])
+            if signature in signatures:
+                rejection_counts["duplicate_layout_signature"] += 1
+                continue
+            signatures.add(signature)
+            records.append(sft_record_from_training_record(training_record))
+
+    output.write_text("".join(json.dumps(record, allow_nan=False) + "\n" for record in records), encoding="utf-8")
+    validation = validate_sft_jsonl(output)
+    room_counts: Counter[str] = Counter()
+    shape_counts: Counter[str] = Counter()
+    branch_counts: Counter[str] = Counter()
+    cycle_counts: Counter[str] = Counter()
+    height_feature_counts: Counter[str] = Counter()
+    progression_counts: Counter[str] = Counter()
+    provenance_counts: Counter[str] = Counter({"synthetic": 0, "extracted": 0, "hand-authored": 0})
+    tier_counts: Counter[str] = Counter()
+    prompt_lengths: list[int] = []
+    assistant_lengths: list[int] = []
+    for record in records:
+        metadata = record.get("metadata", {})
+        labels = metadata.get("labels", {}) if isinstance(metadata, dict) else {}
+        metrics = metadata.get("structural_metrics", {}) if isinstance(metadata, dict) else {}
+        graph = metrics.get("graph", {}) if isinstance(metrics, dict) else {}
+        height = metrics.get("height", {}) if isinstance(metrics, dict) else {}
+        progression = metrics.get("progression", {}) if isinstance(metrics, dict) else {}
+        provenance = str(metadata.get("dataset_class", "unknown")) if isinstance(metadata, dict) else "unknown"
+        provenance_counts[provenance] += 1
+        tier_counts[str(labels.get("complexity_tier", "unknown"))] += 1
+        room_counts[str(metrics.get("space_count", 0))] += 1
+        for shape in metrics.get("unique_room_shapes", []) if isinstance(metrics, dict) else []:
+            shape_counts[str(shape)] += 1
+        branch_counts[str(graph.get("branch_nodes", 0))] += 1
+        cycle_counts[str(graph.get("cycle_count", 0))] += 1
+        height_feature_counts[str(height.get("feature_count", 0))] += 1
+        progression_counts["required_key_lock" if progression.get("required_gate_count", 0) else "reachable_exit"] += 1
+        prompt_lengths.append(int(metadata.get("prompt_length", 0)))
+        assistant_lengths.append(int(metadata.get("assistant_output_length", 0)))
+
+    summary = {
+        "schema": "romerodsl_phase4_complexity_balanced_sft_v1",
+        "output": str(output),
+        "seed": seed,
+        "records": len(records),
+        "requested_tier_counts": requested,
+        "tier_counts": dict(tier_counts),
+        "room_count_distribution": dict(room_counts),
+        "shape_distribution": dict(shape_counts),
+        "branch_count_distribution": dict(branch_counts),
+        "cycle_count_distribution": dict(cycle_counts),
+        "height_feature_distribution": dict(height_feature_counts),
+        "progression_distribution": dict(progression_counts),
+        "prompt_length_distribution": _length_distribution(prompt_lengths),
+        "assistant_output_length_distribution": _length_distribution(assistant_lengths),
+        "provenance_counts": dict(provenance_counts),
+        "duplicate_rejections": dict(rejection_counts),
+        "valid": validation["valid"],
+        "validation": validation,
+    }
+    output.with_suffix(output.suffix + ".summary.json").write_text(
+        json.dumps(summary, indent=2, allow_nan=False) + "\n", encoding="utf-8"
+    )
+    return summary
+
+
+def _length_distribution(values: list[int]) -> dict[str, Any]:
+    if not values:
+        return {"count": 0, "min": 0, "max": 0, "mean": 0.0, "values": []}
+    return {
+        "count": len(values),
+        "min": min(values),
+        "max": max(values),
+        "mean": sum(values) / len(values),
+        "values": sorted(values),
+    }
 
 
 def validate_sft_jsonl(path: Path) -> dict[str, Any]:

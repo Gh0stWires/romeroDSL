@@ -1,0 +1,111 @@
+{
+  "schema": "romerodsl_phase4_complexity_balanced_sft_v1",
+  "output": "C:\\Users\\gh0st\\AppData\\Local\\Temp\\tmp4morjiy1\\phase4_synthetic_smoke.jsonl",
+  "seed": 20261020,
+  "records": 8,
+  "requested_tier_counts": {
+    "basic": 2,
+    "intermediate": 2,
+    "advanced": 2,
+    "expert": 2
+  },
+  "tier_counts": {
+    "basic": 2,
+    "intermediate": 2,
+    "advanced": 2,
+    "expert": 2
+  },
+  "room_count_distribution": {
+    "4": 2,
+    "6": 2,
+    "15": 1,
+    "13": 1,
+    "18": 1,
+    "19": 1
+  },
+  "shape_distribution": {
+    "inset_chamber": 6,
+    "rectangle": 8,
+    "rectangle_with_side_alcoves": 6,
+    "t_shaped": 6,
+    "irregular_orthogonal": 6,
+    "l_shaped": 6,
+    "bent_corridor": 5,
+    "depressed_floor": 5,
+    "closet": 5,
+    "irregular_octagonal": 5,
+    "raised_center": 5
+  },
+  "branch_count_distribution": {
+    "1": 2,
+    "2": 2,
+    "4": 2,
+    "7": 2
+  },
+  "cycle_count_distribution": {
+    "0": 2,
+    "1": 3,
+    "2": 2,
+    "4": 1
+  },
+  "height_feature_distribution": {
+    "0": 2,
+    "2": 2,
+    "8": 2,
+    "7": 1,
+    "9": 1
+  },
+  "progression_distribution": {
+    "reachable_exit": 2,
+    "required_key_lock": 6
+  },
+  "prompt_length_distribution": {
+    "count": 8,
+    "min": 191,
+    "max": 227,
+    "mean": 213.5,
+    "values": [
+      191,
+      195,
+      208,
+      216,
+      223,
+      223,
+      225,
+      227
+    ]
+  },
+  "assistant_output_length_distribution": {
+    "count": 8,
+    "min": 4174,
+    "max": 18217,
+    "mean": 10524.875,
+    "values": [
+      4174,
+      4243,
+      6367,
+      6542,
+      12983,
+      14183,
+      17490,
+      18217
+    ]
+  },
+  "provenance_counts": {
+    "synthetic": 8,
+    "extracted": 0,
+    "hand-authored": 0
+  },
+  "duplicate_rejections": {},
+  "valid": true,
+  "validation": {
+    "schema": "romerodsl_sft_v0.7",
+    "path": "C:\\Users\\gh0st\\AppData\\Local\\Temp\\tmp4morjiy1\\phase4_synthetic_smoke.jsonl",
+    "records": 8,
+    "invalid_json": 0,
+    "invalid_dsl": 0,
+    "invalid_shape": 0,
+    "valid": true,
+    "errors": []
+  }
+}

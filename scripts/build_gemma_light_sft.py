@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import copy
 import json
 import random
@@ -7,6 +8,9 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+from romerodsl.extraction import generate_synthetic_training_records, structural_layout_signature
+from romerodsl.finetune import sft_record_from_training_record
+from romerodsl.metrics import structural_metrics
 from romerodsl.schema import validate_document
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,11 +35,33 @@ BUCKET_QUOTAS = {
 }
 
 
-def main() -> int:
-    OUT.parent.mkdir(parents=True, exist_ok=True)
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Build quality-gated Gemma-light SFT data.")
+    parser.add_argument("--source", type=Path, default=SOURCE)
+    parser.add_argument("--output", type=Path, default=OUT)
+    parser.add_argument("--synthetic-per-tier", type=int, default=0)
+    parser.add_argument("--synthetic-seed", type=int, default=SEED)
+    parser.add_argument(
+        "--synthetic-count",
+        action="append",
+        default=[],
+        metavar="TIER=COUNT",
+        help="override one curriculum tier count; repeat for basic/intermediate/advanced/expert",
+    )
+    args = parser.parse_args(argv)
+    source = Path(args.source)
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
     rng = random.Random(SEED)
-    records = load_records(SOURCE)
+    records = load_records(source)
     selected, bucket_counts, rejection_counts = select_records_for_training(records, rng=rng)
+    synthetic_records, synthetic_counts, synthetic_rejections = build_synthetic_records_for_sft(
+        per_tier=args.synthetic_per_tier,
+        overrides=args.synthetic_count,
+        seed=args.synthetic_seed,
+    )
+    selected.extend(synthetic_records)
+    rejection_counts.update(synthetic_rejections)
 
     golden_records = build_golden_records()
     selected.extend(golden_records)
@@ -45,19 +71,110 @@ def main() -> int:
     if not validation["valid"]:
         raise SystemExit(json.dumps(validation, indent=2))
 
-    OUT.write_text("".join(json.dumps(record, allow_nan=False) + "\n" for record in selected), encoding="utf-8")
+    output.write_text("".join(json.dumps(record, allow_nan=False) + "\n" for record in selected), encoding="utf-8")
     summary = {
-        "source": str(SOURCE),
-        "output": str(OUT),
+        "source": str(source),
+        "output": str(output),
         "records": len(selected),
         "bucket_counts": bucket_counts,
+        "synthetic_tier_counts": synthetic_counts,
         "golden_records": len(golden_records),
-        "rejection_counts": rejection_counts,
+        "rejection_counts": dict(rejection_counts),
+        "provenance_counts": provenance_distribution(selected),
+        "curriculum_distribution": curriculum_distribution(selected),
         "validation": validation,
     }
-    SUMMARY.write_text(json.dumps(summary, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+    SUMMARY_PATH = output.with_suffix(output.suffix + ".summary.json")
+    SUMMARY_PATH.write_text(json.dumps(summary, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     print(json.dumps(summary, indent=2, allow_nan=False))
     return 0
+
+
+def build_synthetic_records_for_sft(
+    *,
+    per_tier: int,
+    overrides: list[str],
+    seed: int,
+) -> tuple[list[dict[str, Any]], dict[str, int], dict[str, int]]:
+    if per_tier < 0:
+        raise ValueError("--synthetic-per-tier must be non-negative")
+    counts = {tier: per_tier for tier in ("basic", "intermediate", "advanced", "expert")}
+    for raw in overrides:
+        if "=" not in raw:
+            raise ValueError(f"invalid --synthetic-count {raw!r}; expected TIER=COUNT")
+        tier, value = raw.split("=", 1)
+        if tier not in counts:
+            raise ValueError(f"invalid synthetic tier {tier!r}")
+        counts[tier] = int(value)
+        if counts[tier] < 0:
+            raise ValueError("synthetic tier counts must be non-negative")
+
+    selected: list[dict[str, Any]] = []
+    signatures: set[str] = set()
+    rejection_counts: Counter[str] = Counter()
+    for index, tier in enumerate(counts):
+        training_records = generate_synthetic_training_records(
+            tier,
+            count=counts[tier],
+            seed=seed + index * 100003,
+        )
+        for training_record in training_records:
+            signature = structural_layout_signature(training_record["dsl"])
+            if signature in signatures:
+                rejection_counts["duplicate_layout_signature"] += 1
+                continue
+            candidate = normalize_record(sft_record_from_training_record(training_record))
+            reasons = record_rejection_reasons(candidate)
+            if reasons:
+                rejection_counts.update(reasons)
+                continue
+            signatures.add(signature)
+            selected.append(candidate)
+    return selected, {tier: counts[tier] for tier in counts}, dict(rejection_counts)
+
+
+def provenance_distribution(records: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {"synthetic": 0, "extracted": 0, "hand-authored": 0, "unknown": 0}
+    for record in records:
+        metadata = record.get("metadata", {})
+        labels = metadata.get("labels", {}) if isinstance(metadata, dict) else {}
+        provenance = labels.get("dataset_class") if isinstance(labels, dict) else None
+        counts[str(provenance) if provenance in counts else "unknown"] += 1
+    return counts
+
+
+def curriculum_distribution(records: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
+    distributions = {
+        "room_counts": Counter(),
+        "shape_types": Counter(),
+        "branch_counts": Counter(),
+        "cycle_counts": Counter(),
+        "height_features": Counter(),
+        "progression_types": Counter(),
+        "prompt_lengths": Counter(),
+        "assistant_output_lengths": Counter(),
+    }
+    for record in records:
+        metadata = record.get("metadata", {})
+        metrics = metadata.get("structural_metrics", {}) if isinstance(metadata, dict) else {}
+        graph = metrics.get("graph", {}) if isinstance(metrics, dict) else {}
+        height = metrics.get("height", {}) if isinstance(metrics, dict) else {}
+        progression = metrics.get("progression", {}) if isinstance(metrics, dict) else {}
+        distributions["room_counts"][str(metrics.get("space_count", 0))] += 1
+        for shape in metrics.get("unique_room_shapes", []) if isinstance(metrics, dict) else []:
+            distributions["shape_types"][str(shape)] += 1
+        distributions["branch_counts"][str(graph.get("branch_nodes", 0))] += 1
+        distributions["cycle_counts"][str(graph.get("cycle_count", 0))] += 1
+        distributions["height_features"][str(height.get("feature_count", 0))] += 1
+        progression_type = (
+            metadata.get("features", {}).get("progression_type")
+            if isinstance(metadata.get("features"), dict)
+            else None
+        ) or ("required_key_lock" if progression.get("required_gate_count", 0) else ("optional_key_lock" if progression.get("optional_gate_count", 0) else "reachable_exit"))
+        distributions["progression_types"][str(progression_type)] += 1
+        distributions["prompt_lengths"][str(metadata.get("prompt_length", 0))] += 1
+        distributions["assistant_output_lengths"][str(metadata.get("assistant_output_length", 0))] += 1
+    return {name: dict(counter) for name, counter in distributions.items()}
 
 
 def load_records(path: Path) -> list[dict[str, Any]]:
@@ -174,6 +291,29 @@ def normalize_record(record: dict[str, Any]) -> dict[str, Any]:
         assistant["content"] = json.dumps(
             document, sort_keys=True, separators=(",", ":"), allow_nan=False
         )
+    metadata = normalized.get("metadata")
+    if isinstance(metadata, dict):
+        document = json.loads(messages[-1]["content"])
+        labels = metadata.get("labels")
+        if not isinstance(labels, dict):
+            labels = {}
+            metadata["labels"] = labels
+        dataset_class = labels.get("dataset_class") or metadata.get("dataset_class")
+        if dataset_class not in {"synthetic", "extracted", "hand-authored"}:
+            if metadata.get("source_wad") or metadata.get("source_sample"):
+                dataset_class = "extracted"
+            elif metadata.get("hand_authored") is True or metadata.get("source_kind") == "hand-authored":
+                dataset_class = "hand-authored"
+            else:
+                dataset_class = "unknown"
+        labels["dataset_class"] = dataset_class
+        metadata["dataset_class"] = dataset_class
+        metadata["structural_metrics"] = structural_metrics(document)
+        prompt_message = messages[1] if len(messages) > 1 and isinstance(messages[1], dict) else {}
+        prompt_text = prompt_message.get("content") if isinstance(prompt_message, dict) else ""
+        assistant_text = messages[-1].get("content") if isinstance(messages[-1], dict) else ""
+        metadata["prompt_length"] = len(prompt_text) if isinstance(prompt_text, str) else 0
+        metadata["assistant_output_length"] = len(assistant_text) if isinstance(assistant_text, str) else 0
     normalized["schema"] = "romerodsl_sft_v0.11_gemma_light_real_wad_only"
     return normalized
 

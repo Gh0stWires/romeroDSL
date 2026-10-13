@@ -14,7 +14,7 @@ This keeps room topology, height/elevation, and key progression as first-class l
 
 ## Current status
 
-This is v0.10-pre: a GitHub-ready semantic Doom DSL pipeline plus early no-repair model-training experiments. The compiler/validator path is solid enough to prove hand-authored maps with real rooms, keyed progression, BFG rewards, material validation, and UDMF/WAD export. The model path is improving, but it is not yet a solved `prompt -> playable WAD` system.
+This is v0.12: a GitHub-ready semantic Doom DSL pipeline plus early no-repair model-training experiments and a deterministic complexity-balanced curriculum builder. The compiler/validator path is solid enough to prove hand-authored maps with real rooms, keyed progression, BFG rewards, material validation, and UDMF/WAD export. The model path is improving, but it is not yet a solved `prompt -> playable WAD` system.
 
 The current best training run is the clean Gemma 4 E4B 4-bit QLoRA adapter at `runs/gemma4_e4b_v10_light_clean/adapter`. It trained on the rebuilt Gemma-light SFT set after fixing the multi-key self-connection bug and adding quality gates for self-connections, invalid materials, missing `spaces`, and route bypasses. The run completed 100 steps with final train loss `0.01657` and validation loss `0.01367` on the canonical SFT distribution.
 
@@ -177,6 +177,51 @@ The command writes:
 
 `--strict-only` is now only for reproducing the older keyed-progression subset. The v0.8 default uses the full graph cache and buckets samples by what they can honestly supervise: `basic_route`, `optional_key_lock`, `required_single_lock`, `required_multi_lock`, and `layout_style_only`. Start, exit, and a playable route are the core generated contract; keys and locks are only placed in the assistant target when the source graph says a lock gates exit progression.
 
+## Phase 4 complexity-balanced curriculum data
+
+Phase 4 adds a deterministic synthetic curriculum for teaching varied authored structure without confusing synthetic examples with extracted WAD evidence. The generator supports four tiers:
+
+- `basic`: 3–5 spaces with simple but varied routes.
+- `intermediate`: 6–9 spaces with branches, multiple silhouettes, and height variation.
+- `advanced`: 10–15 spaces with loops, optional areas, and multi-step progression.
+- `expert`: 16–24 spaces with multiple hubs and meaningful exploration.
+
+Each generated document is independently varied across topology, room size and shape, theme/material preset, height features, encounters, resources, secrets, locks, connection types, and progression. Prompts are generated from measured target statistics, including the exact authored room count. A requested twelve-room prompt therefore targets exactly twelve spaces.
+
+The generator validates every target, compiles it through the abstract geometry compiler, and rejects ID-independent duplicate layout signatures. It is available directly for experiments:
+
+```python
+from romerodsl.extraction import generate_synthetic_training_records
+
+records = generate_synthetic_training_records("advanced", count=100, seed=20261020)
+```
+
+Build a compact synthetic-only SFT smoke set and its distribution report:
+
+```python
+from pathlib import Path
+from romerodsl.finetune import build_complexity_balanced_sft
+
+build_complexity_balanced_sft(
+    Path("build/phase4_synthetic_sft/romerodsl_synthetic.jsonl"),
+    seed=20261020,
+    counts={"basic": 20, "intermediate": 20, "advanced": 20, "expert": 20},
+)
+```
+
+The summary reports room counts, shape types, branch counts, cycle counts, height features, progression types, prompt lengths, assistant output lengths, duplicate rejections, and provenance counts for `synthetic`, `extracted`, and `hand-authored` records. The checked Phase 4 smoke report is `reports/phase4_synthetic_curriculum_smoke_summary.json`; it contains eight valid records, two per tier, with zero duplicate-layout rejections.
+
+The Gemma-light builder can add a synthetic curriculum to the extracted WAD-derived selection without relabeling it as extracted:
+
+```bash
+python scripts/build_gemma_light_sft.py \
+  --source build/v08_sft/romerodsl_sft_v08_full.jsonl \
+  --output build/phase4_gemma_sft/romerodsl_sft_phase4.jsonl \
+  --synthetic-per-tier 100 \
+  --synthetic-seed 20261020
+```
+
+Use `--synthetic-count basic=50 --synthetic-count expert=150` to deliberately overweight a tier. The output summary records tier and provenance distributions. Synthetic curriculum data is a controlled augmentation, not evidence that the model learned those layouts from human-authored WADs; keep that distinction in training and evaluation reports.
 ## Build v0.8 supervised fine-tuning JSONL
 
 ```bash
@@ -269,7 +314,8 @@ The compiler may make valid geometry from those decisions, but it should not inv
 9. v0.9: Gemma 4 E4B no-repair zero-shot/one-shot experiments and light QLoRA setup. This phase proved Gemma has stronger semantic planning than the earlier Qwen slice, but raw zero-shot/one-shot output was still invalid under the DSL contract.
 10. v0.10: Clean Gemma-light rebuild after fixing multi-key self-connections and adding SFT quality gates. The final clean adapter emits valid JSON and follows the BFG/yellow-gate route better, but still fails strict DSL when it omits a requested red key and collapses explicit eight-room prompts to six spaces.
 11. v0.11 / Phase 3: topology-preserving graph-cache extraction, explicit extracted/synthetic/hand-authored provenance, source-versus-DSL topology audit, and honest rejection of unsupported source maps. Exact linedef geometry remains a future source-WAD parsing task.
-12. Next: tighten no-repair eval for requested key colors and requested room counts, add more varied eight-room/multi-key golden examples, rebuild SFT, and run a targeted shorter fine-tune before moving on to richer geometry layers.
+12. v0.12 / Phase 4: deterministic complexity-balanced synthetic curriculum with exact prompt/target room-count alignment, tiered topology, independent architectural/combat/progression variation, duplicate-layout rejection, and SFT distribution reporting. Synthetic examples remain separately labeled from extracted WAD examples.
+13. Next: tighten no-repair eval for requested key colors and requested room counts, add more varied eight-room/multi-key golden examples, rebuild SFT, and run a targeted shorter fine-tune before moving on to richer geometry layers.
 
 ## Repository layout
 

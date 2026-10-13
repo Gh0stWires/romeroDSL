@@ -121,6 +121,16 @@ def structural_metrics(
             and isinstance(connection.get("key"), str)
         }
     )
+    required_gate_colors = sorted(
+        {
+            str(gate.get("key"))
+            for gate in gates
+            if gate.get("type") in {"locked_door", "keyed_door"}
+            and bool(gate.get("required_for_exit"))
+            and isinstance(gate.get("key"), str)
+        }
+    )
+    optional_gate_colors = sorted(set(gate_colors) - set(required_gate_colors))
     required_gate_count = sum(
         gate.get("type") in {"locked_door", "keyed_door"} and bool(gate.get("required_for_exit"))
         for gate in gates
@@ -153,7 +163,10 @@ def structural_metrics(
         "progression": {
             "key_colors": key_colors,
             "gate_colors": gate_colors,
+            "required_gate_colors": required_gate_colors,
+            "optional_gate_colors": optional_gate_colors,
             "required_gate_count": required_gate_count,
+            "optional_gate_count": max(0, len(gate_colors) - len(required_gate_colors)),
             "matching_key_colors": sorted(set(key_colors) & set(gate_colors)),
             "missing_key_for_gate_colors": sorted(set(gate_colors) - set(key_colors)),
             "keys": len(keys),

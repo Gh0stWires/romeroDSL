@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
@@ -86,8 +87,46 @@ class GemmaLightSftBuilderTests(unittest.TestCase):
         self.assertEqual(len(selected), 2)
         self.assertEqual(bucket_counts, {"required_single_lock": 2})
         self.assertEqual(rejections["self_connection"], 1)
+    def test_synthetic_curriculum_builder_adds_only_valid_provenance_records(self) -> None:
+        records, counts, rejections = builder.build_synthetic_records_for_sft(
+            per_tier=1,
+            overrides=[],
+            seed=20261101,
+        )
+        self.assertEqual(len(records), 4)
+        self.assertEqual(counts, {"basic": 1, "intermediate": 1, "advanced": 1, "expert": 1})
+        self.assertEqual(rejections, {})
+        self.assertTrue(all(builder.record_rejection_reasons(record) == [] for record in records))
+        self.assertTrue(
+            all(record["metadata"]["labels"]["dataset_class"] == "synthetic" for record in records)
+        )
+
     def test_build_golden_records_is_empty_for_real_wad_only_training(self) -> None:
         self.assertEqual(builder.build_golden_records(), [])
+
+    def test_main_can_mix_synthetic_curriculum_with_extracted_selection(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source.jsonl"
+            output = root / "phase4.jsonl"
+            source.write_text(json.dumps(sft_record(load_example())) + "\n", encoding="utf-8")
+            exit_code = builder.main(
+                [
+                    "--source",
+                    str(source),
+                    "--output",
+                    str(output),
+                    "--synthetic-per-tier",
+                    "1",
+                    "--synthetic-seed",
+                    "20261102",
+                ]
+            )
+            self.assertEqual(exit_code, 0)
+            summary = json.loads((output.with_suffix(output.suffix + ".summary.json")).read_text(encoding="utf-8"))
+            self.assertEqual(summary["synthetic_tier_counts"], {"basic": 1, "intermediate": 1, "advanced": 1, "expert": 1})
+            self.assertEqual(summary["provenance_counts"]["synthetic"], 4)
+            self.assertEqual(summary["validation"]["invalid_dsl"], 0)
 
     def test_main_dataset_does_not_add_hand_authored_golden_records(self) -> None:
         valid = sft_record(load_example(), bucket="required_single_lock")

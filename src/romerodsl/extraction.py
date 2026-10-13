@@ -8,12 +8,15 @@ contract that the compiler can then turn into clean Doom geometry.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import random
 from collections import Counter, defaultdict, deque
 from pathlib import Path
 from typing import Any
 
 from romerodsl.metrics import structural_metrics
+from romerodsl.schema import validate_document
 
 
 class TopologyExtractionError(ValueError):
@@ -25,6 +28,32 @@ LEGACY_EXTRACTION_MODE = "legacy_canonical"
 
 KEY_COLOR_ORDER = ("blue", "red", "yellow")
 VALID_THEME_GUESSES = {"techbase", "hell"}
+SYNTHETIC_TIERS = ("basic", "intermediate", "advanced", "expert")
+SYNTHETIC_TIER_BOUNDS = {
+    "basic": (3, 5),
+    "intermediate": (6, 9),
+    "advanced": (10, 15),
+    "expert": (16, 24),
+}
+SYNTHETIC_SHAPES = (
+    "rectangle",
+    "rectangle_with_side_alcoves",
+    "l_shaped",
+    "t_shaped",
+    "irregular_orthogonal",
+    "inset_chamber",
+    "raised_center",
+    "depressed_floor",
+    "irregular_octagonal",
+    "bent_corridor",
+    "closet",
+)
+SYNTHETIC_THEME_PRESETS = {
+    "techbase": ("industrial", "deliberate"),
+    "hell": ("stone", "hostile"),
+    "industrial": ("techbase", "pressurized"),
+    "stone": ("hell", "ancient"),
+}
 
 
 def dsl_from_graph_sample(
@@ -1462,3 +1491,440 @@ def _monster_mix(monster_count: int) -> list[dict[str, int]]:
     if monster_count <= 8:
         return [{"zombieman": max(1, monster_count)}]
     return [{"imp": min(monster_count, 8)}, {"shotgun_guy": max(1, monster_count // 4)}]
+
+
+def generate_synthetic_dsl(tier: str, *, seed: int) -> dict[str, Any]:
+    """Generate one deterministic, complete synthetic DSL document.
+
+    The generator builds a main route plus tier-specific branch/chord structure.
+    Required locks are placed on main-route cut edges, so extra loops cannot bypass
+    them.  All values are drawn from the compiler's supported semantic vocabulary.
+    """
+
+    if tier not in SYNTHETIC_TIER_BOUNDS:
+        raise ValueError(f"unsupported synthetic tier {tier!r}")
+    rng = random.Random(seed)
+    minimum, maximum = SYNTHETIC_TIER_BOUNDS[tier]
+    room_count = rng.randint(minimum, maximum)
+    branch_count = {
+        "basic": rng.randint(0, 1),
+        "intermediate": rng.randint(1, 2),
+        "advanced": rng.randint(2, 3),
+        "expert": rng.randint(4, 6),
+    }[tier]
+    branch_count = min(branch_count, max(0, room_count - 3))
+    main_count = room_count - branch_count
+    required_lock_count = {
+        "basic": 0,
+        "intermediate": (1 if seed % 3 else 0),
+        "advanced": 1 + (seed % 2),
+        "expert": 2 + (seed % 2),
+    }[tier]
+    required_lock_count = min(required_lock_count, max(0, main_count - 3))
+    optional_lock = tier in {"advanced", "expert"} and seed % 2 == 0 and branch_count > 0
+    theme_name = ("techbase", "hell", "industrial", "stone")[seed % 4]
+    secondary, mood = SYNTHETIC_THEME_PRESETS[theme_name]
+    materials = _synthetic_materials(theme_name)
+
+    main_ids = [f"main_{index:02d}" for index in range(main_count)]
+    branch_ids = [f"branch_{index:02d}" for index in range(branch_count)]
+    all_ids = main_ids + branch_ids
+    gate_positions = _synthetic_gate_positions(main_count, required_lock_count)
+    gate_colors = list(KEY_COLOR_ORDER[:required_lock_count])
+    connections: list[dict[str, Any]] = []
+    existing_pairs: set[tuple[str, str]] = set()
+
+    def add_connection(
+        source: str,
+        target: str,
+        *,
+        kind: str = "hallway",
+        key: str | None = None,
+        required_for_exit: bool = False,
+        secret: bool = False,
+    ) -> str:
+        pair = (source, target)
+        if pair in existing_pairs or (target, source) in existing_pairs:
+            return ""
+        existing_pairs.add(pair)
+        connection_id = f"edge_{len(connections):03d}"
+        record: dict[str, Any] = {
+            "id": connection_id,
+            "from": source,
+            "to": target,
+            "type": kind,
+        }
+        if key is not None:
+            record.update({"key": key, "required_for_exit": required_for_exit})
+        if secret:
+            record["secret"] = True
+        connections.append(record)
+        return connection_id
+
+    main_edge_ids: list[str] = []
+    for index in range(main_count - 1):
+        color = gate_colors[gate_positions.index(index)] if index in gate_positions else None
+        main_edge_ids.append(
+            add_connection(
+                main_ids[index],
+                main_ids[index + 1],
+                kind="locked_door" if color else ("stairs" if index % 4 == 2 else "hallway"),
+                key=color,
+                required_for_exit=color is not None,
+            )
+        )
+
+    for index, branch_id in enumerate(branch_ids):
+        anchor = 1 + ((seed + index * 3) % max(1, main_count - 2))
+        is_secret = index == 0 or (tier == "expert" and index % 3 == 0)
+        add_connection(
+            main_ids[anchor],
+            branch_id,
+            kind="hidden_wall" if is_secret else ("doorway" if index % 2 else "hallway"),
+            secret=is_secret,
+        )
+
+    chord_count = {"basic": seed % 2, "intermediate": 1, "advanced": 2, "expert": 4}[tier]
+    for _ in range(chord_count * 8):
+        if chord_count <= 0:
+            break
+        left, right = sorted(rng.sample(range(main_count), 2))
+        if right - left < 2 or any(left <= gate < right for gate in gate_positions):
+            continue
+        if add_connection(main_ids[left], main_ids[right], kind="loopback"):
+            chord_count -= 1
+
+    optional_key: tuple[str, str, str] | None = None
+    if optional_lock and branch_ids:
+        branch_id = branch_ids[-1]
+        anchor = next(
+            connection["from"]
+            for connection in connections
+            if connection["to"] == branch_id
+        )
+        optional_color = KEY_COLOR_ORDER[(required_lock_count + seed) % len(KEY_COLOR_ORDER)]
+        gate_id = add_connection(anchor, branch_id, kind="locked_door", key=optional_color)
+        if gate_id:
+            optional_key = (optional_color, anchor, gate_id)
+            connections = [connection for connection in connections if connection["id"] != gate_id]
+            connection = {
+                "id": gate_id,
+                "from": anchor,
+                "to": branch_id,
+                "type": "locked_door",
+                "key": optional_color,
+                "required_for_exit": False,
+            }
+            connections.append(connection)
+
+    key_locations = {
+        color: main_ids[max(0, position - 1)]
+        for color, position in zip(gate_colors, gate_positions)
+    }
+    keys = [
+        {"color": color, "location": location, "reachable_before": [main_edge_ids[position]]}
+        for color, location, position in zip(gate_colors, key_locations.values(), gate_positions)
+    ]
+    gates = [
+        {
+            "id": main_edge_ids[position],
+            "type": "locked_door",
+            "key": color,
+            "blocks": f"{main_ids[position]} -> {main_ids[position + 1]}",
+            "required_for_exit": True,
+        }
+        for color, position in zip(gate_colors, gate_positions)
+    ]
+    if optional_key is not None:
+        color, location, gate_id = optional_key
+        keys.append({"color": color, "location": location, "reachable_before": [gate_id]})
+        gates.append(
+            {
+                "id": gate_id,
+                "type": "locked_door",
+                "key": color,
+                "blocks": f"{location} -> {branch_ids[-1]}",
+                "required_for_exit": False,
+            }
+        )
+
+    critical_path: list[str] = [main_ids[0]]
+    for index, connection_id in enumerate(main_edge_ids):
+        critical_path.extend([connection_id, main_ids[index + 1]])
+    floor_levels = [0]
+    if tier != "basic":
+        floor_levels += [-16, 16] if tier == "intermediate" else [-32, -16, 16, 32]
+    spaces = []
+    for index, space_id in enumerate(all_ids):
+        is_branch = space_id.startswith("branch_")
+        if index == 0:
+            role = "player_start"
+        elif space_id == main_ids[-1]:
+            role = "exit"
+        elif space_id in key_locations.values():
+            role = "key_room"
+        elif is_branch and index == main_count:
+            role = "secret_reward"
+        elif is_branch:
+            role = "resource_room" if index % 2 else "combat_room"
+        elif index % 5 == 0:
+            role = "combat_hub"
+        else:
+            role = "combat_room" if index % 2 else "connector"
+        floor = floor_levels[(seed + index) % len(floor_levels)]
+        shape = SYNTHETIC_SHAPES[(seed + index * 2) % len(SYNTHETIC_SHAPES)]
+        if tier == "basic" and index == 0:
+            shape = "rectangle"
+        ceiling = floor + (160 if role == "combat_hub" else 128)
+        monster_count = 0 if role in {"player_start", "connector", "resource_room", "secret_reward"} else 1 + ((seed + index) % (4 if tier == "basic" else 8))
+        space: dict[str, Any] = {
+            "id": space_id,
+            "role": role,
+            "size": ("small", "medium", "large")[(seed + index) % 3],
+            "shape": shape,
+            "orientation": (0, 90, 180, 270)[(seed + index) % 4],
+            "floor_height": floor,
+            "ceiling_height": ceiling,
+            "materials": dict(materials),
+        }
+        if role == "player_start":
+            space["things"] = {"player_start": True}
+        if role == "exit":
+            space["contains"] = {"exit_switch": True}
+        if space_id in key_locations.values():
+            space.setdefault("contains", {})["key"] = next(color for color, location in key_locations.items() if location == space_id)
+        if role == "secret_reward":
+            space["secret"] = True
+            space.setdefault("contains", {})["items"] = ["green_armor", "medkit"]
+        elif role == "resource_room":
+            space.setdefault("contains", {})["items"] = ["shells", "medkit"]
+        if monster_count:
+            space["encounter"] = {"monsters": _monster_mix(monster_count), "intensity": "heavy" if monster_count > 4 else "light"}
+        if tier != "basic" and (index % 3 == 0 or shape in {"raised_center", "depressed_floor"}):
+            feature_type = "raised_center" if (seed + index) % 2 else "depressed_floor"
+            feature_floor = floor + (24 if feature_type == "raised_center" else -24)
+            space["height_topology"] = {
+                "features": [{"type": feature_type, "floor_height": feature_floor, "ceiling_height": ceiling}]
+            }
+        spaces.append(space)
+
+    document = {
+        "dsl_version": "0.1",
+        "game": "doom2",
+        "format_target": "udmf",
+        "title": f"Synthetic {tier.title()} {theme_name.title()} Expedition {seed}",
+        "layout_seed": seed,
+        "scale": "small" if room_count < 7 else ("medium" if room_count < 14 else "large"),
+        "difficulty": "easy" if tier == "basic" else ("medium" if tier in {"intermediate", "advanced"} else "hard"),
+        "intended_playtime": "short" if tier == "basic" else ("medium" if tier != "expert" else "long"),
+        "metadata": {
+            "dataset_class": "synthetic",
+            "complexity_tier": tier,
+            "generator_seed": seed,
+            "generator_version": "phase4_curriculum_v1",
+        },
+        "design_intent": {
+            "summary": f"A synthetic {tier} {theme_name} expedition with {room_count} authored spaces.",
+            "topology": tier,
+            "progression_style": "required_key_lock" if gates else ("optional_key_lock" if optional_key else "reachable_exit"),
+            "combat_style": "distributed_encounters" if tier != "basic" else "light_pressure",
+            "height_style": "varied_sector_heights" if tier != "basic" else "mostly_level",
+        },
+        "theme": {
+            "primary": theme_name,
+            "secondary": secondary,
+            "mood": mood,
+            "materials": materials,
+        },
+        "progression": {
+            "start": main_ids[0],
+            "exit": main_ids[-1],
+            "critical_path": critical_path,
+            "keys": keys,
+            "gates": gates,
+        },
+        "spaces": spaces,
+        "connections": connections,
+        "validation": {
+            "required": [
+                "exactly_one_player_start",
+                "exactly_one_exit",
+                "start_can_reach_exit",
+                "keys_reachable_before_matching_locks",
+                "locked_doors_are_partition_edges",
+            ],
+            "reject_if": ["room_overlap", "layout_connection_unplaced", "exit_reachable_without_required_locked_exit"],
+        },
+    }
+    return document
+
+
+def _synthetic_gate_positions(main_count: int, lock_count: int) -> list[int]:
+    if lock_count <= 0:
+        return []
+    candidates = list(range(1, max(2, main_count - 2)))
+    if lock_count == 1:
+        return [candidates[-1]]
+    positions = []
+    for index in range(lock_count):
+        position = candidates[(index + 1) * len(candidates) // (lock_count + 1)]
+        if position not in positions:
+            positions.append(position)
+    return sorted(positions)
+
+
+def _synthetic_materials(theme: str) -> dict[str, str]:
+    if theme == "hell":
+        return {
+            "floor": "FLAT5_4", "ceiling": "CEIL3_5", "wall": "STONE2",
+            "upper_wall": "STONE2", "lower_wall": "STONE2", "door": "BIGDOOR2",
+            "door_track": "DOORTRAK", "exit_switch": "SW1EXIT",
+        }
+    if theme == "industrial":
+        return {
+            "floor": "FLAT20", "ceiling": "CEIL3_5", "wall": "METAL2",
+            "upper_wall": "METAL2", "lower_wall": "STEP1", "door": "BIGDOOR2",
+            "door_track": "DOORTRAK", "exit_switch": "SW1COMM",
+        }
+    if theme == "stone":
+        return {
+            "floor": "FLAT5_4", "ceiling": "CEIL3_5", "wall": "STONE2",
+            "upper_wall": "STONE2", "lower_wall": "STEP2", "door": "BIGDOOR2",
+            "door_track": "DOORTRAK", "exit_switch": "SW1EXIT",
+        }
+    return dict(_theme_block("techbase")["materials"])
+
+
+def structural_layout_signature(document: dict[str, Any]) -> str:
+    """Return an ID-independent signature for near-duplicate layout rejection."""
+
+    spaces = [space for space in document.get("spaces", []) if isinstance(space, dict)]
+    canonical_spaces = sorted(
+        spaces,
+        key=lambda space: (
+            str(space.get("role")), str(space.get("shape")), str(space.get("size")),
+            int(space.get("floor_height", 0) or 0), int(space.get("ceiling_height", 0) or 0),
+            bool(space.get("secret")), str(space.get("id")),
+        ),
+    )
+    ids = {str(space.get("id")): index for index, space in enumerate(canonical_spaces)}
+    space_signature = [
+        (
+            str(space.get("role")), str(space.get("shape")), str(space.get("size")),
+            int(space.get("floor_height", 0) or 0), int(space.get("ceiling_height", 0) or 0),
+            bool(space.get("secret")),
+        )
+        for space in canonical_spaces
+    ]
+    edge_signature = sorted(
+        (
+            min(ids.get(str(edge.get("from")), -1), ids.get(str(edge.get("to")), -1)),
+            max(ids.get(str(edge.get("from")), -1), ids.get(str(edge.get("to")), -1)),
+            str(edge.get("type")), str(edge.get("key")), bool(edge.get("required_for_exit")), bool(edge.get("secret")),
+        )
+        for edge in document.get("connections", [])
+        if isinstance(edge, dict)
+    )
+    progression = document.get("progression", {})
+    payload = {
+        "spaces": space_signature,
+        "edges": edge_signature,
+        "keys": sorted((str(item.get("color")), ids.get(str(item.get("location")), -1)) for item in progression.get("keys", []) if isinstance(item, dict)),
+        "gates": sorted((str(item.get("key")), bool(item.get("required_for_exit"))) for item in progression.get("gates", []) if isinstance(item, dict)),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def synthetic_prompt_for_document(document: dict[str, Any], *, variant: int = 0) -> str:
+    """Describe a synthetic target using only facts measured from that target."""
+
+    metrics = structural_metrics(document)
+    room_count = metrics["space_count"]
+    graph = metrics["graph"]
+    height = metrics["height"]
+    progression = metrics["progression"]
+    tier = str(document.get("metadata", {}).get("complexity_tier", "basic"))
+    theme = str(document.get("theme", {}).get("primary", "techbase"))
+    shape_count = metrics["unique_room_shape_count"]
+    feature_count = height["feature_count"]
+    branch_count = graph["branch_nodes"]
+    cycle_count = graph["cycle_count"]
+    lock_colors = progression["required_gate_colors"]
+    optional_lock_colors = progression["optional_gate_colors"]
+    if lock_colors:
+        lock_phrase = ", ".join(lock_colors) + " required locked progression"
+    elif optional_lock_colors:
+        lock_phrase = "no required key locks and optional " + ", ".join(optional_lock_colors) + " lock exploration"
+    else:
+        lock_phrase = "no key locks"
+    structure_phrase = f"{branch_count} branching hubs and {cycle_count} graph loops" if branch_count or cycle_count else "a straightforward connected route"
+    height_phrase = f"{height['level_count']} height levels and {feature_count} intra-room height features" if height["varied"] else "mostly level floors"
+    variants = [
+        f"Build exactly {room_count} authored spaces for a {theme} Doom II map. Include {structure_phrase}, {shape_count} room silhouettes, {height_phrase}, and {lock_phrase}.",
+        f"Create a {tier} {theme} level with exactly {room_count} rooms. Preserve the measured branches and loops, use varied architecture, and keep the exit route consistent with the declared progression: {lock_phrase}.",
+        f"Design a playable Doom II expedition of exactly {room_count} spaces. It must have {structure_phrase}; use {shape_count} distinct shapes, {height_phrase}, and do not add progression mechanics beyond {lock_phrase}.",
+    ]
+    return variants[variant % len(variants)]
+
+
+def generate_synthetic_training_records(tier: str, *, count: int, seed: int) -> list[dict[str, Any]]:
+    """Generate validated, compilable, non-duplicate synthetic training records."""
+
+    if count < 0:
+        raise ValueError("count must be non-negative")
+    records: list[dict[str, Any]] = []
+    signatures: set[str] = set()
+    attempts = 0
+    while len(records) < count and attempts < max(20, count * 20):
+        candidate_seed = seed + attempts * 7919
+        document = generate_synthetic_dsl(tier, seed=candidate_seed)
+        signature = structural_layout_signature(document)
+        report = validate_document(document)
+        if report.valid and signature not in signatures:
+            compile_to_plan = None
+            try:
+                from romerodsl.compiler import compile_to_plan as _compile_to_plan
+                compile_to_plan = _compile_to_plan
+                compile_to_plan(document)
+            except Exception:
+                compile_to_plan = None
+            if compile_to_plan is not None:
+                metrics = structural_metrics(document)
+                records.append(
+                    {
+                        "schema": "romerodsl_training_pair_v0.8",
+                        "source_sample": f"synthetic/{tier}/{candidate_seed}",
+                        "source_wad": None,
+                        "family": "synthetic",
+                        "map": f"SYNTHETIC_{tier.upper()}_{len(records):04d}",
+                        "prompt": synthetic_prompt_for_document(document, variant=attempts),
+                        "prompt_variant_index": attempts % 3,
+                        "dsl": document,
+                        "labels": {
+                            "dataset_class": "synthetic",
+                            "extraction_mode": "synthetic_curriculum",
+                            "complexity_tier": tier,
+                            "bucket": f"synthetic_{tier}",
+                            "colors": metrics["progression"]["gate_colors"],
+                        },
+                        "features": {
+                            "room_count": metrics["space_count"],
+                            "shape_types": metrics["unique_room_shapes"],
+                            "branch_nodes": metrics["graph"]["branch_nodes"],
+                            "cycle_count": metrics["graph"]["cycle_count"],
+                            "height_feature_count": metrics["height"]["feature_count"],
+                            "height_level_count": metrics["height"]["level_count"],
+                            "progression_type": (
+                                "required_key_lock"
+                                if metrics["progression"]["required_gate_count"]
+                                else ("optional_key_lock" if metrics["progression"]["optional_gate_count"] else "reachable_exit")
+                            ),
+                            "prompt_length": len(synthetic_prompt_for_document(document, variant=attempts)),
+                        },
+                    }
+                )
+                signatures.add(signature)
+        attempts += 1
+    if len(records) != count:
+        raise ValueError(f"could not generate {count} unique valid {tier} records after {attempts} attempts")
+    return records
