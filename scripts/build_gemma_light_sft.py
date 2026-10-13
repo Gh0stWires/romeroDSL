@@ -12,7 +12,7 @@ from romerodsl.schema import validate_document
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "build/v08_sft/romerodsl_sft_v08_full.jsonl"
 GOLDEN = ROOT / "examples/complex_eight_room_bfg.json"
-OUT = ROOT / "build/v09_gemma_sft/romerodsl_sft_gemma_light.jsonl"
+OUT = ROOT / "build/v11_gemma_sft/romerodsl_sft_gemma_light_real_wad_only.jsonl"
 SUMMARY = OUT.with_suffix(OUT.suffix + ".summary.json")
 SEED = 20261010
 SYSTEM_PROMPT = (
@@ -174,66 +174,18 @@ def normalize_record(record: dict[str, Any]) -> dict[str, Any]:
         assistant["content"] = json.dumps(
             document, sort_keys=True, separators=(",", ":"), allow_nan=False
         )
-    normalized["schema"] = "romerodsl_sft_v0.9_gemma_light"
+    normalized["schema"] = "romerodsl_sft_v0.11_gemma_light_real_wad_only"
     return normalized
 
 
 def build_golden_records() -> list[dict[str, Any]]:
-    blue_red = json.loads(GOLDEN.read_text(encoding="utf-8"))
-    yellow_red = make_yellow_refinery_variant(blue_red)
-    variants = [
-        (
-            "hand-authored eight room techbase with blue key to BFG armory, then red key to exit",
-            blue_red,
-        ),
-        (
-            "make a big eight-room techbase: blue key opens the BFG armory, then the route reaches the red key and red locked exit",
-            blue_red,
-        ),
-        (
-            "create a complex Doom II level with separate combat spaces, blue and red keycard rooms, and a BFG9000 reward room on the required route",
-            blue_red,
-        ),
-        (
-            "build a playable hub-like eight room Doom map where BFG is an item behind the blue lock, not a key",
-            blue_red,
-        ),
-        (
-            "make a corrupted refinery with yellow key to BFG armory, then red key to final exit wing",
-            yellow_red,
-        ),
-        (
-            "create a big eight-room Doom II corrupted techbase/refinery with yellow key, BFG armory, red key, and red locked exit",
-            yellow_red,
-        ),
-        (
-            "generate a hub-like refinery map: yellow locked door gates a BFG9000 room before the red key room, then red lock gates the exit",
-            yellow_red,
-        ),
-        (
-            "make an eight-space map with no bypass around required yellow and red locked doors; BFG9000 is only an item reward",
-            yellow_red,
-        ),
-    ]
-    records = []
-    for prompt, dsl in variants:
-        report = validate_document(dsl)
-        report.raise_for_errors()
-        records.append(
-            {
-                "schema": "romerodsl_sft_v0.9_gemma_light",
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                    {
-                        "role": "assistant",
-                        "content": json.dumps(dsl, sort_keys=True, separators=(",", ":"), allow_nan=False),
-                    },
-                ],
-                "metadata": {"source": "hand_authored_golden", "variant": dsl.get("title")},
-            }
-        )
-    return records
+    """Return hand-authored records for experiments that explicitly allow synthetic golden data.
+
+    Sam wants Gemma trained only from human-made WAD-derived levels right now, so
+    the default light SFT builder must not inject hand-authored examples.
+    """
+
+    return []
 
 
 def make_yellow_refinery_variant(source: dict[str, Any]) -> dict[str, Any]:
@@ -263,6 +215,63 @@ def make_yellow_refinery_variant(source: dict[str, Any]) -> dict[str, Any]:
     return doc
 
 
+def make_red_yellow_bfg_variant(source: dict[str, Any]) -> dict[str, Any]:
+    """Return an eight-room route where red gates BFG and yellow gates exit."""
+
+    doc = copy.deepcopy(source)
+    replace_strings_atomic(doc, {"blue": "red", "red": "yellow"})
+    doc["title"] = "Eight Room Red Yellow BFG Refinery"
+    doc["design_intent"]["summary"] = (
+        "A big eight-room refinery where a red key opens the BFG armory, the route continues to "
+        "a yellow key room, and a yellow locked door gates the final exit wing."
+    )
+    doc["design_intent"]["progression_style"] = "red_key_then_bfg_armory_then_yellow_key_then_yellow_locked_exit"
+    doc["theme"]["mood"] = "hellish_refinery"
+    return doc
+
+
+def make_blue_red_combat_loop_variant(source: dict[str, Any]) -> dict[str, Any]:
+    """Return a distinct blue/red eight-room variant with combat-loop wording."""
+
+    doc = copy.deepcopy(source)
+    doc["title"] = "Eight Room Blue Red Combat Loop"
+    doc["design_intent"]["summary"] = (
+        "A big eight-room techbase where the blue key gates a dangerous combat loop and BFG reward "
+        "before the red key, then the red locked door gates the final exit."
+    )
+    doc["design_intent"]["topology"] = "eight_room_two_key_combat_loop_with_bfg_reward"
+    doc["design_intent"]["progression_style"] = "blue_key_then_combat_loop_then_red_key_then_red_locked_exit"
+    for space in doc.get("spaces", []):
+        if isinstance(space, dict) and space.get("id") == "bfg_armory":
+            space["role"] = "weapon_combat_room"
+            space["shape"] = "irregular_octagonal"
+            space.setdefault("encounter", {})["intensity"] = "heavy"
+    return doc
+
+
+def make_no_bfg_variant(source: dict[str, Any], *, title: str) -> dict[str, Any]:
+    """Return an eight-room two-key route with arsenal rewards but no BFG token."""
+
+    doc = copy.deepcopy(source)
+    replace_strings(doc, {"bfg_to_red_key": "arsenal_to_second_key", "bfg_armory": "arsenal_room"})
+    replace_strings(doc, {"BFG9000": "chaingun", "BFG": "arsenal", "bfg9000": "chaingun", "bfg": "arsenal"})
+    doc["title"] = title
+    doc["design_intent"]["summary"] = (
+        "A big eight-room two-key route with an arsenal reward room between the first locked door "
+        "and the second key, using ammo and weapon rewards instead of a superweapon reward."
+    )
+    doc["design_intent"]["reward_style"] = "arsenal_room_behind_existing_key_lock_with_standard_weapon_reward"
+    doc["design_intent"]["progression_style"] = (
+        str(doc["design_intent"].get("progression_style", "two_key_route")).replace("bfg_armory", "arsenal_room")
+    )
+    for space in doc.get("spaces", []):
+        if isinstance(space, dict) and space.get("id") == "arsenal_room":
+            space["role"] = "weapon_room"
+            contains = space.setdefault("contains", {})
+            contains["items"] = ["chaingun", "cell_pack", "medkit"]
+    return doc
+
+
 def replace_strings(value: Any, replacements: dict[str, str]) -> None:
     if isinstance(value, dict):
         for key, child in list(value.items()):
@@ -280,6 +289,32 @@ def replace_strings(value: Any, replacements: dict[str, str]) -> None:
                 value[index] = child
             else:
                 replace_strings(child, replacements)
+
+
+def replace_strings_atomic(value: Any, replacements: dict[str, str]) -> None:
+    """Replace strings without cascading when replacement text contains another source token."""
+
+    sentinels = {old: f"__ROMERODSL_REPLACE_{index}__" for index, old in enumerate(replacements)}
+
+    def replace_text(text: str) -> str:
+        for old, sentinel in sentinels.items():
+            text = text.replace(old, sentinel)
+        for old, sentinel in sentinels.items():
+            text = text.replace(sentinel, replacements[old])
+        return text
+
+    if isinstance(value, dict):
+        for key, child in list(value.items()):
+            if isinstance(child, str):
+                value[key] = replace_text(child)
+            else:
+                replace_strings_atomic(child, replacements)
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            if isinstance(child, str):
+                value[index] = replace_text(child)
+            else:
+                replace_strings_atomic(child, replacements)
 
 
 def validate_records(records: list[dict[str, Any]]) -> dict[str, Any]:

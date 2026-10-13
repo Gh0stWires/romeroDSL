@@ -86,6 +86,23 @@ class GemmaLightSftBuilderTests(unittest.TestCase):
         self.assertEqual(len(selected), 2)
         self.assertEqual(bucket_counts, {"required_single_lock": 2})
         self.assertEqual(rejections["self_connection"], 1)
+    def test_build_golden_records_is_empty_for_real_wad_only_training(self) -> None:
+        self.assertEqual(builder.build_golden_records(), [])
+
+    def test_main_dataset_does_not_add_hand_authored_golden_records(self) -> None:
+        valid = sft_record(load_example(), bucket="required_single_lock")
+
+        selected, bucket_counts, rejections = builder.select_records_for_training(
+            [valid],
+            rng=builder.random.Random(builder.SEED),
+            quotas={"required_single_lock": 1},
+        )
+        selected.extend(builder.build_golden_records())
+
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(bucket_counts, {"required_single_lock": 1})
+        self.assertEqual(rejections, {})
+        self.assertNotEqual(selected[0].get("metadata", {}).get("source"), "hand_authored_golden")
 
 
 if __name__ == "__main__":

@@ -133,6 +133,117 @@ def evaluate_prompt_intent(result: dict[str, Any], expectation: dict[str, Any]) 
     return {"prompt_intent_valid": not errors, "prompt_intent_errors": errors}
 
 
+KEY_COLORS = ("blue", "red", "yellow")
+NUMBER_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+}
+
+
+def requested_key_colors_from_prompt(prompt: str) -> list[str]:
+    """Return key colors explicitly requested by the prompt."""
+
+    text = prompt.lower()
+    requested = {
+        color
+        for color in KEY_COLORS
+        if re.search(rf"\b{color}\s+(?:key|keycard|skull\s*key|skull)\b", text)
+    }
+    return sorted(requested)
+
+
+def requested_space_count_from_prompt(prompt: str) -> int | None:
+    """Return an explicit requested room/space count from prompt text, if any."""
+
+    text = prompt.lower()
+    numeric = re.search(r"\b(\d{1,2})\s*[- ]?\s*(?:room|rooms|space|spaces)\b", text)
+    if numeric:
+        return int(numeric.group(1))
+    for word, value in NUMBER_WORDS.items():
+        if re.search(rf"\b{word}\s*[- ]?\s*(?:room|rooms|space|spaces)\b", text):
+            return value
+    return None
+
+
+def evaluate_generated_dsl_intent(prompt: str, dsl: dict[str, Any]) -> dict[str, Any]:
+    """Summarize prompt-contract checks directly from generated DSL JSON."""
+
+    progression = dsl.get("progression", {}) if isinstance(dsl.get("progression"), dict) else {}
+    spaces = dsl.get("spaces", []) if isinstance(dsl.get("spaces"), list) else []
+    connections = dsl.get("connections", []) if isinstance(dsl.get("connections"), list) else []
+    requested_keys = set(requested_key_colors_from_prompt(prompt))
+    requested_space_count = requested_space_count_from_prompt(prompt)
+    generated_key_colors = {
+        str(key.get("color"))
+        for key in progression.get("keys", [])
+        if isinstance(key, dict) and isinstance(key.get("color"), str)
+    }
+    generated_gate_colors = {
+        str(gate.get("key"))
+        for gate in progression.get("gates", [])
+        if isinstance(gate, dict) and isinstance(gate.get("key"), str)
+    }
+    generated_gate_colors.update(
+        str(connection.get("key"))
+        for connection in connections
+        if isinstance(connection, dict)
+        and connection.get("type") in {"locked_door", "keyed_door"}
+        and isinstance(connection.get("key"), str)
+    )
+    space_count = len(spaces)
+    space_count_exact_match = requested_space_count is None or space_count == requested_space_count
+    space_count_tolerance = _space_count_tolerance(requested_space_count)
+    space_count_pass = requested_space_count is None or abs(space_count - requested_space_count) <= space_count_tolerance
+    if requested_space_count is None:
+        space_count_note = "not_requested"
+    elif space_count_exact_match:
+        space_count_note = "exact_match"
+    elif space_count_pass:
+        space_count_note = "soft_pass_within_tolerance"
+    else:
+        space_count_note = "outside_tolerance"
+    missing_requested_keys = requested_keys - generated_key_colors
+    missing_requested_gates = requested_keys - generated_gate_colors
+    design_intent = dsl.get("design_intent", {}) if isinstance(dsl.get("design_intent"), dict) else {}
+    public_design_notes = {
+        key: design_intent.get(key)
+        for key in ("summary", "topology", "progression_style", "combat_style", "reward_style")
+        if isinstance(design_intent.get(key), str)
+    }
+    return {
+        "requested_key_colors": sorted(requested_keys),
+        "generated_key_colors": sorted(generated_key_colors),
+        "generated_gate_colors": sorted(generated_gate_colors),
+        "missing_requested_keys": sorted(missing_requested_keys),
+        "missing_requested_gates": sorted(missing_requested_gates),
+        "requested_space_count": requested_space_count,
+        "space_count": space_count,
+        "space_count_exact_match": space_count_exact_match,
+        "space_count_tolerance": space_count_tolerance,
+        "space_count_pass": space_count_pass,
+        "space_count_note": space_count_note,
+        "critical_path": progression.get("critical_path", []) if isinstance(progression.get("critical_path"), list) else [],
+        "public_design_notes": public_design_notes,
+        "prompt_contract_valid": not missing_requested_keys and not missing_requested_gates and space_count_pass,
+    }
+
+
+def _space_count_tolerance(requested_space_count: int | None) -> int:
+    if requested_space_count is None:
+        return 0
+    return max(1, requested_space_count // 4)
+
+
 def extract_json_object(text: str) -> dict[str, Any]:
     """Extract one JSON object from raw model text."""
 

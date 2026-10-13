@@ -11,7 +11,7 @@ from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from romerodsl.compiler import compile_to_plan, compile_to_wad
-from romerodsl.evaluation import extract_json_object, template_similarity_report
+from romerodsl.evaluation import evaluate_generated_dsl_intent, extract_json_object, template_similarity_report
 from romerodsl.schema import validate_document
 from romerodsl.wad import validate_wad
 
@@ -42,12 +42,14 @@ def main() -> int:
     parser.add_argument("--adapter", type=Path, default=DEFAULT_ADAPTER)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--max-new-tokens", type=int, default=3500)
+    parser.add_argument("--prompt", default=PROMPT)
     args = parser.parse_args()
 
     adapter = args.adapter.resolve()
     out = args.output.resolve()
+    prompt = str(args.prompt)
     out.mkdir(parents=True, exist_ok=True)
-    summary: dict[str, Any] = {"model": MODEL_ID, "adapter": str(adapter), "prompt": PROMPT}
+    summary: dict[str, Any] = {"model": MODEL_ID, "adapter": str(adapter), "prompt": prompt}
     if not adapter.exists():
         raise FileNotFoundError(f"adapter directory does not exist: {adapter}")
 
@@ -74,7 +76,7 @@ def main() -> int:
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": PROMPT},
+        {"role": "user", "content": prompt},
     ]
     text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     (out / "prompt.txt").write_text(text, encoding="utf-8")
@@ -154,6 +156,7 @@ def summarize_dsl(summary: dict[str, Any], dsl: dict[str, Any], report: Any) -> 
     ]
     summary["progression"] = progression
     summary["intent_checks"] = intent_checks(dsl)
+    summary.update(evaluate_generated_dsl_intent(str(summary.get("prompt", "")), dsl))
 
 
 def intent_checks(dsl: dict[str, Any]) -> dict[str, Any]:
