@@ -31,6 +31,8 @@ The package currently contains:
 - render-surface validation for missing visible textures and invalid Doom II flats/textures
 - safer placement for starts, keys, items, and monsters around blocking height features
 - chamfered/octagonal room boundaries for authored irregular spaces
+- shape-aware L/T/inset/alcove/corridor/closet footprints with north/east/south/west orientation
+- central raised-platform and depressed-floor features inferred from the room shape
 - stair-step sectors for raised platforms and pits that declare stair access/escape
 - a minimal dependency-free UDMF/PWAD exporter
 - unit tests
@@ -88,6 +90,33 @@ python -m romerodsl compile examples/blue_lock_processing.json --output build/bl
 ```
 
 The emitted plan is a debug bridge between semantic authorship and UDMF/WAD export.
+
+## Phase 1 geometry gallery
+
+The compiler accepts canonical room shapes including `rectangle`, `rectangle_with_side_alcoves`, `l_shaped`, `t_shaped`, `irregular_orthogonal`, `inset_chamber`, `raised_center`, `depressed_floor`, `irregular_octagonal`, `bent_corridor`, `narrow_hall_with_cover`, and `closet`. Shapes may use `0`, `90`, `180`, or `270` degree orientation values, or the aliases `north`, `east`, `south`, and `west`. Unsupported shape and orientation values are rejected by validation rather than silently compiled as rectangles.
+
+A hand-authored export covering representative Phase 1 geometry cases is available at `examples/phase1_geometry_gallery.json`:
+
+```bash
+python -m romerodsl validate examples/phase1_geometry_gallery.json
+python -m romerodsl export-wad examples/phase1_geometry_gallery.json --output build/phase1_geometry_gallery.wad
+```
+
+The gallery is intentionally an authored compiler fixture, not a model-quality claim. Generated model output remains subject to strict no-repair validation.
+
+## Phase 2 graph-aware layout
+
+Room placement is graph-driven rather than a fixed horizontal cursor. The compiler builds deterministic BFS layers from the start room, groups related branch rooms around their graph parent, preserves loop and reconnection edges, resolves footprint collisions, and records the layout seed and corridor-orientation counts in the abstract plan. Set `layout_seed` in a DSL document to reproduce a layout or generate a deterministic mirrored arrangement.
+
+The hand-authored acceptance fixture is `examples/phase2_graph_layout.json`. It contains eight spaces, multiple branches, a return loop, a secret branch, and a required blue locked exit gate:
+
+```bash
+python -m romerodsl validate examples/phase2_graph_layout.json
+python -m romerodsl compile examples/phase2_graph_layout.json --output build/phase2_graph_layout.plan.json
+python -m romerodsl export-wad examples/phase2_graph_layout.json --output build/phase2_graph_layout.wad
+```
+
+The layout stage rejects invalid seed types and overlapping room boxes before geometry export. It does not invent connections or alter semantic progression.
 
 ## Audit and build prompt-to-DSL training pairs
 

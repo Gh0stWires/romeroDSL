@@ -14,6 +14,58 @@ from romerodsl.materials import validate_material_declaration
 
 SUPPORTED_DSL_VERSION = "0.1"
 KEY_COLORS = {"blue", "red", "yellow"}
+ROOM_SHAPE_ALIASES = {
+    "rectangle": "rectangle",
+    "rectangle_with_side_alcoves": "rectangle_with_side_alcoves",
+    "rectangle_with_alcoves": "rectangle_with_side_alcoves",
+    "l_shaped": "l_shaped",
+    "l_shape": "l_shaped",
+    "l-shaped": "l_shaped",
+    "t_shaped": "t_shaped",
+    "t_shape": "t_shaped",
+    "t-shaped": "t_shaped",
+    "irregular_orthogonal": "irregular_orthogonal",
+    "inset_chamber": "inset_chamber",
+    "inset_wall_sections": "inset_chamber",
+    "raised_center": "raised_center",
+    "raised_central_structure": "raised_center",
+    "depressed_floor": "depressed_floor",
+    "irregular_octagonal": "irregular_octagonal",
+    "irregular_octagon": "irregular_octagonal",
+    "octagonal": "irregular_octagonal",
+    "chamfered_rectangle": "irregular_octagonal",
+    "bent_corridor": "bent_corridor",
+    "narrow_hall_with_cover": "narrow_hall_with_cover",
+    "closet": "closet",
+}
+SUPPORTED_ROOM_SHAPES = frozenset(ROOM_SHAPE_ALIASES)
+
+
+def canonical_room_shape(value: Any) -> str | None:
+    """Return the compiler shape name, or ``None`` for unsupported values."""
+
+    if not isinstance(value, str):
+        return None
+    return ROOM_SHAPE_ALIASES.get(value)
+
+ORIENTATION_ALIASES = {
+    0: 0,
+    90: 90,
+    180: 180,
+    270: 270,
+    "north": 0,
+    "east": 90,
+    "south": 180,
+    "west": 270,
+}
+
+
+def canonical_orientation(value: Any) -> int | None:
+    """Return a clockwise quarter-turn orientation in degrees."""
+
+    return ORIENTATION_ALIASES.get(value)
+
+
 REQUIRED_TOP_LEVEL_KEYS = {
     "dsl_version",
     "game",
@@ -64,6 +116,11 @@ def validate_document(document: dict[str, Any]) -> ValidationReport:
     version = str(document.get("dsl_version", ""))
     if version != SUPPORTED_DSL_VERSION:
         errors.append(f"unsupported dsl_version {version!r}; expected {SUPPORTED_DSL_VERSION!r}")
+
+    if "layout_seed" in document and (
+        isinstance(document.get("layout_seed"), bool) or not isinstance(document.get("layout_seed"), int)
+    ):
+        errors.append("layout_seed must be an integer when provided")
 
     progression = _mapping(document.get("progression"), "progression", errors)
     spaces = _sequence(document.get("spaces"), "spaces", errors)
@@ -156,6 +213,18 @@ def _validate_spaces(spaces: list[Any], errors: list[str], warnings: list[str]) 
         if not isinstance(space, dict):
             continue
         space_id = str(space.get("id", f"spaces[{index}]"))
+
+        if "shape" in space and canonical_room_shape(space.get("shape")) is None:
+            errors.append(
+                f"space {space_id!r} has unsupported shape {space.get('shape')!r}; "
+                f"supported shapes: {', '.join(sorted(SUPPORTED_ROOM_SHAPES))}"
+            )
+
+        if "orientation" in space and canonical_orientation(space.get("orientation")) is None:
+            errors.append(
+                f"space {space_id!r} has unsupported orientation {space.get('orientation')!r}; "
+                "use 0, 90, 180, 270, north, east, south, or west"
+            )
 
         if "role" not in space:
             warnings.append(f"space {space_id!r} has no role")

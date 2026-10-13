@@ -1,0 +1,75 @@
+{
+  "dsl_version": "0.1",
+  "game": "doom2",
+  "format_target": "udmf",
+  "title": "Phase 2 Graph Layout Test Facility",
+  "layout_seed": 17,
+  "scale": "large",
+  "difficulty": "medium",
+  "intended_playtime": "medium",
+  "compatibility": {"jump_required": false, "crouch_required": false, "freelook_required": false},
+  "design_intent": {
+    "summary": "Eight connected spaces with a hub, two exploratory branches, a return loop, and a required blue locked exit gate.",
+    "topology": "hub_two_branches_loop_and_keyed_exit",
+    "progression_style": "blue_key_then_required_locked_exit",
+    "combat_style": "distributed_encounters"
+  },
+  "theme": {
+    "primary": "techbase",
+    "secondary": "industrial",
+    "mood": "deliberate",
+    "materials": {
+      "floor": "FLOOR0_1",
+      "ceiling": "CEIL3_5",
+      "wall": "STARTAN2",
+      "upper_wall": "STARTAN2",
+      "lower_wall": "STEP1",
+      "door": "BIGDOOR2",
+      "door_track": "DOORTRAK",
+      "exit_switch": "SW1EXIT"
+    }
+  },
+  "progression": {
+    "start": "start_room",
+    "exit": "exit_room",
+    "critical_path": [
+      "start_room",
+      "central_hub",
+      "blue_key_room",
+      "central_hub",
+      "required_locked_exit",
+      "exit_wing",
+      "exit_room"
+    ],
+    "keys": [
+      {"color": "blue", "location": "blue_key_room", "reachable_before": ["required_locked_exit"]}
+    ],
+    "gates": [
+      {"id": "required_locked_exit", "type": "locked_door", "key": "blue", "required_for_exit": true}
+    ]
+  },
+  "spaces": [
+    {"id": "start_room", "role": "player_start", "size": "small", "shape": "rectangle", "floor_height": 0, "ceiling_height": 128, "things": {"player_start": true}},
+    {"id": "central_hub", "role": "combat_hub", "size": "large", "shape": "irregular_octagonal", "floor_height": 0, "ceiling_height": 192, "encounter": {"monsters": [{"imp": 3}]}},
+    {"id": "north_branch", "role": "combat_room", "size": "medium", "shape": "l_shaped", "orientation": "east", "floor_height": 0, "ceiling_height": 128, "encounter": {"monsters": [{"zombieman": 2}]}},
+    {"id": "north_loop", "role": "connector", "size": "small", "shape": "bent_corridor", "orientation": 180, "floor_height": 0, "ceiling_height": 128},
+    {"id": "west_branch", "role": "secret_reward", "size": "small", "shape": "closet", "floor_height": -8, "ceiling_height": 120, "secret": true, "contains": {"items": ["green_armor"]}},
+    {"id": "blue_key_room", "role": "key_room", "size": "medium", "shape": "inset_chamber", "floor_height": -16, "ceiling_height": 144, "contains": {"key": "blue"}, "encounter": {"monsters": [{"imp": 2}]}},
+    {"id": "exit_wing", "role": "final_combat", "size": "large", "shape": "t_shaped", "orientation": "south", "floor_height": 0, "ceiling_height": 160, "encounter": {"monsters": [{"shotgun_guy": 3}]}},
+    {"id": "exit_room", "role": "exit", "size": "small", "shape": "rectangle", "floor_height": 0, "ceiling_height": 128, "contains": {"exit_switch": true}}
+  ],
+  "connections": [
+    {"id": "start_to_hub", "from": "start_room", "to": "central_hub", "type": "hallway"},
+    {"id": "hub_to_north", "from": "central_hub", "to": "north_branch", "type": "doorway"},
+    {"id": "north_to_loop", "from": "north_branch", "to": "north_loop", "type": "hallway"},
+    {"id": "loop_back_to_hub", "from": "north_loop", "to": "central_hub", "type": "hallway"},
+    {"id": "hub_to_west", "from": "central_hub", "to": "west_branch", "type": "hidden_wall", "secret": true},
+    {"id": "hub_to_blue_key", "from": "central_hub", "to": "blue_key_room", "type": "stairs"},
+    {"id": "required_locked_exit", "from": "central_hub", "to": "exit_wing", "type": "locked_door", "key": "blue", "required_for_exit": true},
+    {"id": "exit_wing_to_exit", "from": "exit_wing", "to": "exit_room", "type": "hallway"}
+  ],
+  "validation": {
+    "required": ["exactly_one_player_start", "exactly_one_exit", "start_can_reach_exit", "required_locked_exit", "all_required_spaces_connected"],
+    "reject_if": ["room_overlap", "layout_connection_unplaced", "exit_reachable_without_required_locked_exit"]
+  }
+}

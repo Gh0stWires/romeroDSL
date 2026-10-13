@@ -1,0 +1,53 @@
+{
+  "dsl_version": "0.1",
+  "game": "doom2",
+  "format_target": "udmf",
+  "title": "Phase 1 Geometry Gallery",
+  "scale": "large",
+  "difficulty": "medium",
+  "intended_playtime": "medium",
+  "compatibility": {"jump_required": false, "crouch_required": false, "freelook_required": false},
+  "design_intent": {
+    "summary": "A hand-authored geometry gallery exercising distinct orthogonal footprints and central elevation features.",
+    "topology": "linear_geometry_gallery",
+    "progression_style": "ungated_showcase",
+    "combat_style": "light_showcase_combat"
+  },
+  "theme": {
+    "primary": "techbase",
+    "secondary": "industrial",
+    "mood": "testing",
+    "texture_palette": {"walls": ["STARTAN2"], "floors": ["FLOOR0_1"], "ceilings": ["CEIL3_5"], "doors": ["BIGDOOR2"]},
+    "materials": {"floor": "FLOOR0_1", "ceiling": "CEIL3_5", "wall": "STARTAN2", "upper_wall": "STARTAN2", "lower_wall": "STEP1", "door": "BIGDOOR2", "door_track": "DOORTRAK", "exit_switch": "SW1EXIT"}
+  },
+  "progression": {
+    "start": "start_room",
+    "exit": "exit_room",
+    "critical_path": ["start_room", "l_room", "t_room", "orthogonal_room", "inset_room", "raised_room", "depressed_room", "exit_room"],
+    "keys": [],
+    "gates": []
+  },
+  "spaces": [
+    {"id": "start_room", "role": "player_start", "size": "medium", "shape": "rectangle", "floor_height": 0, "ceiling_height": 128, "things": {"player_start": true}},
+    {"id": "l_room", "role": "connector", "size": "medium", "shape": "l_shaped", "orientation": "east", "floor_height": 0, "ceiling_height": 128},
+    {"id": "t_room", "role": "combat_room", "size": "medium", "shape": "t_shaped", "orientation": 180, "floor_height": 0, "ceiling_height": 128, "encounter": {"monsters": [{"imp": 2}]}},
+    {"id": "orthogonal_room", "role": "combat_room", "size": "large", "shape": "irregular_orthogonal", "floor_height": 0, "ceiling_height": 160},
+    {"id": "inset_room", "role": "connector", "size": "medium", "shape": "inset_chamber", "floor_height": 0, "ceiling_height": 128},
+    {"id": "raised_room", "role": "arena", "size": "large", "shape": "raised_center", "floor_height": 0, "ceiling_height": 160},
+    {"id": "depressed_room", "role": "arena", "size": "large", "shape": "depressed_floor", "floor_height": 0, "ceiling_height": 160},
+    {"id": "exit_room", "role": "exit", "size": "medium", "shape": "rectangle", "floor_height": 0, "ceiling_height": 128, "contains": {"exit_switch": true}}
+  ],
+  "connections": [
+    {"from": "start_room", "to": "l_room", "type": "hallway"},
+    {"from": "l_room", "to": "t_room", "type": "hallway"},
+    {"from": "t_room", "to": "orthogonal_room", "type": "hallway"},
+    {"from": "orthogonal_room", "to": "inset_room", "type": "hallway"},
+    {"from": "inset_room", "to": "raised_room", "type": "hallway"},
+    {"from": "raised_room", "to": "depressed_room", "type": "hallway"},
+    {"from": "depressed_room", "to": "exit_room", "type": "hallway"}
+  ],
+  "validation": {
+    "required": ["exactly_one_player_start", "exactly_one_exit", "start_can_reach_exit", "all_required_spaces_connected"],
+    "reject_if": ["unsupported_shape", "unsupported_orientation", "invalid_geometry"]
+  }
+}

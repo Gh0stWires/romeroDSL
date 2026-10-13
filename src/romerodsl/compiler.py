@@ -10,12 +10,14 @@ invent them.
 
 from __future__ import annotations
 
+from collections import deque
 from pathlib import Path
+import random
 from typing import Any
 
 from romerodsl.geometry import write_geometry_wad
 from romerodsl.materials import SURFACE_ROLES, resolve_materials
-from romerodsl.schema import validate_document
+from romerodsl.schema import canonical_room_shape, validate_document
 from romerodsl.wad import (
     AMMO,
     DOOR,
@@ -40,16 +42,21 @@ def compile_to_plan(document: dict[str, Any]) -> dict[str, Any]:
 
     spaces = document["spaces"]
     connections = document["connections"]
-    room_boxes = _place_rooms(spaces, document["progression"], connections)
+    layout_seed = _layout_seed(document)
+    room_boxes = _place_rooms(spaces, document["progression"], connections, layout_seed=layout_seed)
+    layout = _layout_report(room_boxes, connections, layout_seed)
     return {
         "compiler_version": "0.2",
         "source_title": document.get("title"),
         "target": "abstract_geometry_plan",
         "units": "doom_map_units",
+        "layout": layout,
         "rooms": [
             {
                 "id": space["id"],
                 "role": space.get("role", "unspecified"),
+                "shape": space.get("shape", "rectangle"),
+                "orientation": space.get("orientation", 0),
                 "box": _grid_box_to_map_units(room_boxes[space["id"]]),
                 "grid_box": room_boxes[space["id"]],
                 "floor_height": space.get("floor_height", 0),
@@ -86,7 +93,8 @@ def compile_to_layout(document: dict[str, Any]) -> dict[str, Any]:
     report.raise_for_errors()
 
     spaces = {space["id"]: space for space in document["spaces"]}
-    room_boxes = _place_rooms(document["spaces"], document["progression"], document["connections"])
+    layout_seed = _layout_seed(document)
+    room_boxes = _place_rooms(document["spaces"], document["progression"], document["connections"], layout_seed=layout_seed)
     height = max(box["r"] + box["h"] for box in room_boxes.values()) + 3
     width = max(box["c"] + box["w"] for box in room_boxes.values()) + 3
     grid = [["empty" for _ in range(width)] for _ in range(height)]
@@ -142,6 +150,7 @@ def compile_to_layout(document: dict[str, Any]) -> dict[str, Any]:
         "grid": grid,
         "floor_heights": floor_heights,
         "rooms": room_boxes,
+        "layout": _layout_report(room_boxes, document["connections"], layout_seed),
         "surface_materials": surface_materials,
         "key_colors": key_colors,
         "door_locks": door_locks,
@@ -153,42 +162,271 @@ def compile_to_wad(document: dict[str, Any], path: Path, cell_size: int = 128) -
 
     report = validate_document(document)
     report.raise_for_errors()
-    room_boxes = _place_rooms(document["spaces"], document["progression"], document["connections"])
+    layout_seed = _layout_seed(document)
+    room_boxes = _place_rooms(document["spaces"], document["progression"], document["connections"], layout_seed=layout_seed)
     return write_geometry_wad(document, room_boxes, Path(path), cell_size=cell_size)
 
 
-def _place_rooms(spaces: list[dict[str, Any]], progression: dict[str, Any], connections: list[dict[str, Any]]) -> dict[str, Box]:
-    main_order = _main_path_order(spaces, progression)
+def _layout_seed(document: dict[str, Any]) -> int:
+    raw_seed = document.get("layout_seed", 0)
+    if isinstance(raw_seed, bool):
+        return int(raw_seed)
+    if isinstance(raw_seed, int):
+        return raw_seed
+    raise ValueError("layout_seed must be an integer when provided")
+
+
+def _place_rooms(
+    spaces: list[dict[str, Any]],
+    progression: dict[str, Any],
+    connections: list[dict[str, Any]],
+    *,
+    layout_seed: int = 0,
+) -> dict[str, Box]:
+    return _graph_place_rooms(spaces, progression, connections, layout_seed)
+
+
+def _graph_place_rooms(
+    spaces: list[dict[str, Any]],
+    progression: dict[str, Any],
+    connections: list[dict[str, Any]],
+    layout_seed: int,
+) -> dict[str, Box]:
+    """Place rooms from graph layers, rather than from a linear room cursor.
+
+    BFS layers provide a deterministic scaffold from the start room. Rooms that
+    share a layer are stacked around the layer's center, so branches and loop
+    reconnections get distinct spatial positions. The seed only controls stable
+    tie ordering and mirroring; it never adds unconstrained random offsets.
+    """
+
+    if not spaces:
+        return {}
+    space_by_id = {str(space["id"]): space for space in spaces}
+    adjacency = _layout_adjacency(space_by_id, connections)
+    start = str(progression.get("start"))
+    if start not in space_by_id:
+        start = min(space_by_id)
+    levels = _graph_levels(adjacency, start, layout_seed)
+    critical_branch_nodes = _critical_return_branches(progression, set(space_by_id))
+    critical_order = _main_path_order(spaces, progression)
+    critical_rank = {node: index for index, node in enumerate(critical_order)}
+    seeded_rank = _seeded_node_ranks(space_by_id, layout_seed)
+
+    max_width = max(_size_to_cells(str(space.get("size", "medium")))[0] for space in spaces)
+    max_height = max(_size_to_cells(str(space.get("size", "medium")))[1] for space in spaces)
+    column_step = max_width + 6
+    row_step = max_height + 5
+    layer_nodes: dict[int, list[str]] = {}
+    for node, level in levels.items():
+        layer_nodes.setdefault(level, []).append(node)
+    max_level = max(layer_nodes)
+    max_slots = max((len(nodes) - 1) // 2 for nodes in layer_nodes.values())
+    base_row = 2 + max_slots * row_step
+    base_column = 2
+    mirror = layout_seed % 2 != 0
     boxes: dict[str, Box] = {}
-    cursor_c = 2
-    base_r = 2
-    gap = 5
+    slot_pattern = _center_out_slots(max(len(nodes) for nodes in layer_nodes.values()))
 
-    for space_id in main_order:
-        space = next(space for space in spaces if space["id"] == space_id)
-        w, h = _size_to_cells(str(space.get("size", "medium")))
-        boxes[space_id] = {"r": base_r, "c": cursor_c, "w": w, "h": h}
-        cursor_c += w + gap
+    for level in sorted(layer_nodes):
+        nodes = sorted(
+            layer_nodes[level],
+            key=lambda node: (
+                0 if node in critical_rank else 1,
+                critical_rank.get(node, 10**6),
+                _role_layout_rank(space_by_id[node].get("role")),
+                seeded_rank[node],
+                node,
+            ),
+        )
+        for index, node in enumerate(nodes):
+            space = space_by_id[node]
+            width, height = _size_to_cells(str(space.get("size", "medium")))
+            slot = slot_pattern[index]
+            column_level = max_level - level if mirror else level
+            branch_column_offset = 0
+            if node in critical_branch_nodes or node not in critical_rank:
+                parent_candidates = [
+                    neighbor
+                    for neighbor in adjacency[node]
+                    if neighbor in boxes and levels[neighbor] < levels[node]
+                ]
+                if parent_candidates:
+                    parent = min(parent_candidates, key=lambda candidate: (levels[candidate], seeded_rank[candidate], candidate))
+                    parent_box = boxes[parent]
+                    parent_center = parent_box["c"] + parent_box["w"] // 2
+                    branch_column_offset = parent_center - (base_column + column_level * column_step) - width // 2
+            boxes[node] = {
+                "r": base_row + slot * row_step + (max_height - height) // 2,
+                "c": base_column + column_level * column_step + branch_column_offset,
+                "w": width,
+                "h": height,
+            }
 
-    branch_slots: dict[str, int] = {}
-    for space in spaces:
-        space_id = space["id"]
-        if space_id in boxes:
-            continue
-        anchor = _find_anchor(space_id, connections, boxes) or main_order[0]
-        anchor_box = boxes[anchor]
-        slot = branch_slots.get(anchor, 0)
-        branch_slots[anchor] = slot + 1
-        w, h = _size_to_cells(str(space.get("size", "medium")))
-        # Alternate branches above and below the anchor so key rooms and secrets do not overlap.
-        if slot % 2 == 0:
-            r = anchor_box["r"] + anchor_box["h"] + 5 + (slot // 2) * (h + 3)
-        else:
-            r = max(2, anchor_box["r"] - h - 5 - (slot // 2) * (h + 3))
-        c = max(2, anchor_box["c"] + anchor_box["w"] // 2 - w // 2)
-        boxes[space_id] = {"r": r, "c": c, "w": w, "h": h}
-
+    _resolve_layout_overlaps(boxes, levels, seeded_rank, row_step, column_step)
+    _validate_layout_boxes(boxes, connections)
     return boxes
+
+
+def _layout_adjacency(
+    space_by_id: dict[str, dict[str, Any]], connections: list[dict[str, Any]]
+) -> dict[str, set[str]]:
+    adjacency = {space_id: set() for space_id in space_by_id}
+    for connection in connections:
+        source = str(connection.get("from"))
+        target = str(connection.get("to"))
+        if source in adjacency and target in adjacency and source != target:
+            adjacency[source].add(target)
+            adjacency[target].add(source)
+    return adjacency
+
+
+def _graph_levels(adjacency: dict[str, set[str]], start: str, seed: int) -> dict[str, int]:
+    levels = {start: 0}
+    queue = deque([start])
+    while queue:
+        node = queue.popleft()
+        neighbors = sorted(adjacency.get(node, set()), key=lambda neighbor: (_stable_seed_rank(neighbor, seed), neighbor))
+        for neighbor in neighbors:
+            if neighbor not in levels:
+                levels[neighbor] = levels[node] + 1
+                queue.append(neighbor)
+    next_level = max(levels.values(), default=0) + 2
+    for node in sorted(adjacency):
+        if node not in levels:
+            levels[node] = next_level
+            next_level += 2
+    return levels
+
+
+def _role_layout_rank(role: Any) -> int:
+    role_order = {
+        "player_start": 0,
+        "combat_hub": 1,
+        "connector": 2,
+        "key_room": 3,
+        "combat_room": 4,
+        "reward_room": 5,
+        "secret_reward": 6,
+        "final_combat": 7,
+        "exit": 8,
+    }
+    return role_order.get(str(role), 9)
+
+
+def _critical_return_branches(progression: dict[str, Any], space_ids: set[str]) -> set[str]:
+    raw_path = progression.get("critical_path", [])
+    if not isinstance(raw_path, list):
+        return set()
+    spaces = [str(node) for node in raw_path if str(node) in space_ids]
+    branches: set[str] = set()
+    for index in range(len(spaces) - 2):
+        if spaces[index] == spaces[index + 2] and spaces[index + 1] in space_ids:
+            branches.add(spaces[index + 1])
+    return branches
+
+
+def _seeded_node_ranks(space_by_id: dict[str, dict[str, Any]], seed: int) -> dict[str, int]:
+    nodes = sorted(space_by_id)
+    randomizer = random.Random(seed)
+    randomizer.shuffle(nodes)
+    return {node: index for index, node in enumerate(nodes)}
+
+
+def _stable_seed_rank(value: str, seed: int) -> int:
+    accumulator = seed & 0xFFFFFFFF
+    for character in value:
+        accumulator = (accumulator * 33 + ord(character)) & 0xFFFFFFFF
+    return accumulator
+
+
+def _center_out_slots(count: int) -> list[int]:
+    slots = [0]
+    offset = 1
+    while len(slots) < count:
+        slots.extend((offset, -offset))
+        offset += 1
+    return slots[:count]
+
+
+def _resolve_layout_overlaps(
+    boxes: dict[str, Box],
+    levels: dict[str, int],
+    seeded_rank: dict[str, int],
+    row_step: int,
+    column_step: int,
+) -> None:
+    """Resolve residual footprint collisions without changing graph layers."""
+
+    nodes = sorted(boxes, key=lambda node: (levels[node], seeded_rank[node], node))
+    for _ in range(len(nodes) * 3 + 1):
+        changed = False
+        for index, left_id in enumerate(nodes):
+            left = boxes[left_id]
+            for right_id in nodes[index + 1 :]:
+                right = boxes[right_id]
+                if not _boxes_overlap(left, right):
+                    continue
+                changed = True
+                if levels[left_id] == levels[right_id]:
+                    right["r"] = left["r"] + left["h"] + 5
+                else:
+                    right["c"] = left["c"] + left["w"] + 5
+        if not changed:
+            return
+        for box in boxes.values():
+            box["r"] = max(2, box["r"])
+            box["c"] = max(2, box["c"])
+    _validate_layout_boxes(boxes, [])
+
+
+def _boxes_overlap(left: Box, right: Box) -> bool:
+    return not (
+        left["c"] + left["w"] + 1 <= right["c"]
+        or right["c"] + right["w"] + 1 <= left["c"]
+        or left["r"] + left["h"] + 1 <= right["r"]
+        or right["r"] + right["h"] + 1 <= left["r"]
+    )
+
+
+def _validate_layout_boxes(boxes: dict[str, Box], connections: list[dict[str, Any]]) -> None:
+    nodes = sorted(boxes)
+    for index, left_id in enumerate(nodes):
+        for right_id in nodes[index + 1 :]:
+            if _boxes_overlap(boxes[left_id], boxes[right_id]):
+                raise ValueError(f"layout placed overlapping rooms {left_id!r} and {right_id!r}")
+    for connection in connections:
+        source = str(connection.get("from"))
+        target = str(connection.get("to"))
+        if source not in boxes or target not in boxes:
+            raise ValueError(f"layout connection references unplaced rooms {source!r}, {target!r}")
+
+
+def _layout_report(
+    boxes: dict[str, Box], connections: list[dict[str, Any]], layout_seed: int
+) -> dict[str, Any]:
+    orientation_counts = {"horizontal": 0, "vertical": 0, "diagonal": 0}
+    for connection in connections:
+        source = boxes.get(str(connection.get("from")))
+        target = boxes.get(str(connection.get("to")))
+        if source is None or target is None:
+            continue
+        source_center = (source["c"] + source["w"] // 2, source["r"] + source["h"] // 2)
+        target_center = (target["c"] + target["w"] // 2, target["r"] + target["h"] // 2)
+        if source_center[0] == target_center[0]:
+            orientation_counts["vertical"] += 1
+        elif source_center[1] == target_center[1]:
+            orientation_counts["horizontal"] += 1
+        else:
+            orientation_counts["diagonal"] += 1
+    return {
+        "strategy": "graph_bfs_layers",
+        "seed": layout_seed,
+        "room_count": len(boxes),
+        "connection_count": len(connections),
+        "connection_orientations": orientation_counts,
+        "overlap_count": 0,
+    }
 
 
 def _main_path_order(spaces: list[dict[str, Any]], progression: dict[str, Any]) -> list[str]:
@@ -254,7 +492,11 @@ def _apply_height_features(space: dict[str, Any], box: Box, grid: list[list[str]
     base = int(space.get("floor_height", 0))
     features = space.get("height_topology", {}).get("features", [])
     if not isinstance(features, list):
-        return
+        features = []
+    features = list(features)
+    shape = canonical_room_shape(space.get("shape", "rectangle"))
+    if not features and shape in {"raised_center", "depressed_floor"}:
+        features.append({"type": shape, "floor_height": base + (32 if shape == "raised_center" else -24)})
     for feature in features:
         if not isinstance(feature, dict):
             continue
@@ -278,6 +520,14 @@ def _apply_height_features(space: dict[str, Any], box: Box, grid: list[list[str]
                 for c in range(box["c"] + 1, min(box["c"] + 4, box["c"] + box["w"] - 1)):
                     grid[r][c] = FLOOR
                     floor_heights[r][c] = pit_height
+        elif feature_type in {"raised_center", "depressed_floor", "raised_central_structure", "central_platform", "central_pit"}:
+            center_height = int(feature.get("floor_height", base + (32 if "raised" in str(feature_type) else -24)))
+            center_r = box["r"] + box["h"] // 2
+            center_c = box["c"] + box["w"] // 2
+            for r in range(max(box["r"] + 1, center_r - 1), min(box["r"] + box["h"] - 1, center_r + 2)):
+                for c in range(max(box["c"] + 1, center_c - 1), min(box["c"] + box["w"] - 1, center_c + 2)):
+                    grid[r][c] = FLOOR
+                    floor_heights[r][c] = center_height
 
 
 def _pillar_cells(box: Box, count: int) -> list[Cell]:

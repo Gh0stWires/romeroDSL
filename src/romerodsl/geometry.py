@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from romerodsl.materials import resolve_materials
+from romerodsl.schema import canonical_orientation, canonical_room_shape
 from romerodsl.wad import (
     DOOR_LOCK_NUMBERS,
     DOOR_TEXTURE,
@@ -348,7 +349,21 @@ def build_geometry_textmap(
 ) -> tuple[str, GeometryStats]:
     spaces = {space["id"]: space for space in document["spaces"]}
     rects = {space_id: _box_to_rect(box, cell_size) for space_id, box in room_boxes.items()}
-    openings = _collect_openings(document["connections"], rects)
+    shapes = {}
+    for space_id, space in spaces.items():
+        raw_shape = space.get("shape", "rectangle")
+        shape = canonical_room_shape(raw_shape)
+        if shape is None:
+            raise ValueError(f"unsupported room shape {raw_shape!r} in space {space_id!r}")
+        shapes[space_id] = shape
+    orientations = {}
+    for space_id, space in spaces.items():
+        raw_orientation = space.get("orientation", 0)
+        orientation = canonical_orientation(raw_orientation)
+        if orientation is None:
+            raise ValueError(f"unsupported orientation {raw_orientation!r} in space {space_id!r}")
+        orientations[space_id] = orientation
+    openings = _collect_openings(document["connections"], rects, shapes, orientations)
     builder = UdmfBuilder()
     stats = GeometryStats()
     room_sector_ids: dict[str, int] = {}
@@ -370,7 +385,8 @@ def build_geometry_textmap(
             sector_id,
             openings.get(space_id, []),
             materials,
-            shape=str(space.get("shape", "rectangle")),
+            shape=shapes[space_id],
+            orientation=orientations[space_id],
         )
         stats.room_sectors += 1
 
@@ -387,6 +403,10 @@ def build_geometry_textmap(
             connection,
             door_tag,
             resolve_materials(document, spaces[source]),
+            source_shape=shapes[source],
+            target_shape=shapes[target],
+            source_orientation=orientations[source],
+            target_orientation=orientations[target],
         )
         stats.corridor_sectors += created["corridors"]
         stats.door_sectors += created["doors"]
@@ -407,7 +427,14 @@ def build_geometry_textmap(
     return builder.textmap(), stats
 
 
-def _collect_openings(connections: list[dict[str, Any]], rects: dict[str, Rect]) -> dict[str, list[Opening]]:
+def _collect_openings(
+    connections: list[dict[str, Any]],
+    rects: dict[str, Rect],
+    shapes: dict[str, str] | None = None,
+    orientations: dict[str, int] | None = None,
+) -> dict[str, list[Opening]]:
+    shapes = shapes or {}
+    orientations = orientations or {}
     openings: dict[str, list[Opening]] = {space_id: [] for space_id in rects}
     for connection in connections:
         source = str(connection["from"])
@@ -415,7 +442,12 @@ def _collect_openings(connections: list[dict[str, Any]], rects: dict[str, Rect])
         if source not in rects or target not in rects:
             continue
         _source_side, _target_side, _source_point, _target_point, source_opening, target_opening = _connection_portals(
-            rects[source], rects[target]
+            rects[source],
+            rects[target],
+            source_shape=shapes.get(source, "rectangle"),
+            target_shape=shapes.get(target, "rectangle"),
+            source_orientation=orientations.get(source, 0),
+            target_orientation=orientations.get(target, 0),
         )
         openings[source].append(source_opening)
         openings[target].append(target_opening)
@@ -439,46 +471,88 @@ def _opening_for_side(rect: Rect, side: Side, width: int = 128) -> Opening:
     return Opening(side=side, start=cx - half, end=cx + half)
 
 
-def _connection_portals(source: Rect, target: Rect, width: int = 128) -> tuple[Side, Side, Point, Point, Opening, Opening]:
+def _connection_portals(
+    source: Rect,
+    target: Rect,
+    width: int = 128,
+    *,
+    source_shape: str = "rectangle",
+    target_shape: str = "rectangle",
+    source_orientation: int = 0,
+    target_orientation: int = 0,
+) -> tuple[Side, Side, Point, Point, Opening, Opening]:
     source_side, target_side = _connection_sides(source, target)
-    half = width // 2
-    if source_side in {"left", "right"}:
-        source_lo, source_hi = source[1] + half, source[3] - half
-        target_lo, target_hi = target[1] + half, target[3] - half
-        if source_lo <= target_hi and target_lo <= source_hi:
-            y = _aligned_axis_position(source[1], source[3], target[1], target[3], half)
-            source_y = target_y = y
-        else:
-            source_y = _axis_center(source[1], source[3])
-            target_y = _axis_center(target[1], target[3])
-        source_point = (source[0] if source_side == "left" else source[2], source_y)
-        target_point = (target[0] if target_side == "left" else target[2], target_y)
-        return (
-            source_side,
-            target_side,
-            source_point,
-            target_point,
-            Opening(source_side, source_y - half, source_y + half),
-            Opening(target_side, target_y - half, target_y + half),
+    source_opening = _opening_for_shape(source, source_side, source_shape, width, source_orientation)
+    target_opening = _opening_for_shape(target, target_side, target_shape, width, target_orientation)
+    source_axis = _opening_axis(source_opening)
+    target_axis = _opening_axis(target_opening)
+    if source_opening.start <= target_opening.end and target_opening.start <= source_opening.end:
+        aligned = max(
+            max(source_opening.start, target_opening.start),
+            min(min(source_opening.end, target_opening.end), (source_axis + target_axis) // 2),
         )
-    source_lo, source_hi = source[0] + half, source[2] - half
-    target_lo, target_hi = target[0] + half, target[2] - half
-    if source_lo <= target_hi and target_lo <= source_hi:
-        x = _aligned_axis_position(source[0], source[2], target[0], target[2], half)
-        source_x = target_x = x
+        source_opening = _opening_at_axis(source_opening, aligned)
+        target_opening = _opening_at_axis(target_opening, aligned)
+        source_axis = target_axis = aligned
+
+    if source_side in {"left", "right"}:
+        source_point = (source[0] if source_side == "left" else source[2], source_axis)
+        target_point = (target[0] if target_side == "left" else target[2], target_axis)
     else:
-        source_x = _axis_center(source[0], source[2])
-        target_x = _axis_center(target[0], target[2])
-    source_point = (source_x, source[3] if source_side == "top" else source[1])
-    target_point = (target_x, target[3] if target_side == "top" else target[1])
-    return (
-        source_side,
-        target_side,
-        source_point,
-        target_point,
-        Opening(source_side, source_x - half, source_x + half),
-        Opening(target_side, target_x - half, target_x + half),
-    )
+        source_point = (source_axis, source[3] if source_side == "top" else source[1])
+        target_point = (target_axis, target[3] if target_side == "top" else target[1])
+    return source_side, target_side, source_point, target_point, source_opening, target_opening
+
+
+def _opening_for_shape(
+    rect: Rect,
+    side: Side,
+    shape: str,
+    width: int = 128,
+    orientation: int = 0,
+) -> Opening:
+    intervals = _shape_side_intervals(rect, shape, side, orientation)
+    if not intervals:
+        return _opening_for_side(rect, side, width)
+    desired = _axis_center(rect[1], rect[3]) if side in {"left", "right"} else _axis_center(rect[0], rect[2])
+    interval = min(intervals, key=lambda bounds: 0 if bounds[0] <= desired <= bounds[1] else min(abs(desired - bounds[0]), abs(desired - bounds[1])))
+    lo, hi = interval
+    opening_width = min(width, hi - lo)
+    half = opening_width // 2
+    center = max(lo + half, min(hi - half, desired))
+    return Opening(side=side, start=center - half, end=center + half)
+
+
+def _opening_at_axis(opening: Opening, axis: int) -> Opening:
+    half = (opening.end - opening.start) // 2
+    center = max(opening.start + half, min(opening.end - half, axis))
+    return Opening(opening.side, center - half, center + half)
+
+
+def _opening_axis(opening: Opening) -> int:
+    return (opening.start + opening.end) // 2
+
+
+def _shape_side_intervals(rect: Rect, shape: str, side: Side, orientation: int = 0) -> list[tuple[int, int]]:
+    points = _room_boundary_points(rect, shape, orientation)
+    x1, y1, x2, y2 = rect
+    intervals: list[tuple[int, int]] = []
+    for start, end in zip(points, points[1:] + points[:1], strict=True):
+        sx, sy = start
+        ex, ey = end
+        if side == "left" and sx == ex == x1:
+            lo, hi = sorted((sy, ey))
+            intervals.append((lo, hi))
+        elif side == "right" and sx == ex == x2:
+            lo, hi = sorted((sy, ey))
+            intervals.append((lo, hi))
+        elif side == "top" and sy == ey == y2:
+            lo, hi = sorted((sx, ex))
+            intervals.append((lo, hi))
+        elif side == "bottom" and sy == ey == y1:
+            lo, hi = sorted((sx, ex))
+            intervals.append((lo, hi))
+    return [(lo, hi) for lo, hi in intervals if hi - lo >= 64]
 
 
 def _aligned_axis_position(source_lo: int, source_hi: int, target_lo: int, target_hi: int, half_width: int) -> int:
@@ -504,24 +578,139 @@ def _add_room_boundary(
     materials: dict[str, str],
     *,
     shape: str = "rectangle",
+    orientation: int = 0,
 ) -> None:
-    x1, y1, x2, y2 = rect
     by_side = {side: [opening for opening in openings if opening.side == side] for side in ("left", "right", "top", "bottom")}
-    if shape in {"irregular_octagonal", "octagonal", "chamfered_rectangle"}:
+    points = _room_boundary_points(rect, shape, orientation)
+    for start, end in zip(points, points[1:] + points[:1], strict=True):
+        side = _boundary_side(start, end, rect)
+        segment_openings = by_side.get(side, []) if side else []
+        if start[0] == end[0]:
+            _add_vertical_side(builder, start[0], start[1], end[1], sector, segment_openings, materials["wall"])
+        elif start[1] == end[1]:
+            _add_horizontal_side(builder, start[0], end[0], start[1], sector, segment_openings, materials["wall"])
+        else:
+            builder.add_line(start, end, sector, texture=materials["wall"])
+
+
+def _boundary_side(start: Point, end: Point, rect: Rect) -> Side | None:
+    x1, y1, x2, y2 = rect
+    if start[0] == end[0] == x1:
+        return "left"
+    if start[0] == end[0] == x2:
+        return "right"
+    if start[1] == end[1] == y1:
+        return "bottom"
+    if start[1] == end[1] == y2:
+        return "top"
+    return None
+
+
+def _canonical_room_boundary_points(rect: Rect, shape: str) -> list[Point]:
+    x1, y1, x2, y2 = rect
+    canonical = canonical_room_shape(shape)
+    if canonical is None:
+        raise ValueError(f"unsupported room shape {shape!r}")
+    if canonical in {"rectangle", "raised_center", "depressed_floor"}:
+        return [(x1, y1), (x1, y2), (x2, y2), (x2, y1)]
+    if canonical in {"rectangle_with_side_alcoves", "closet", "bent_corridor", "narrow_hall_with_cover"}:
+        chamfer = min(128, max(64, min(x2 - x1, y2 - y1) // 8))
+        return [
+            (x1, y1 + chamfer),
+            (x1, y2 - chamfer),
+            (x1 + chamfer, y2),
+            (x2 - chamfer, y2),
+            (x2, y2 - chamfer),
+            (x2, y1 + chamfer),
+            (x2 - chamfer, y1),
+            (x1 + chamfer, y1),
+        ]
+    if canonical == "l_shaped":
+        notch_width = max(192, (x2 - x1) // 3)
+        notch_depth = max(192, (y2 - y1) // 3)
+        return [
+            (x1, y1),
+            (x1, y2),
+            (x2 - notch_width, y2),
+            (x2 - notch_width, y2 - notch_depth),
+            (x2, y2 - notch_depth),
+            (x2, y1),
+        ]
+    if canonical == "t_shaped":
+        bar_height = max(192, (y2 - y1) // 3)
+        stem_width = max(192, (x2 - x1) // 3)
+        cx = (x1 + x2) // 2
+        return [
+            (x1, y1),
+            (x1, y2),
+            (x2, y2),
+            (x2, y1 + bar_height),
+            (cx + stem_width // 2, y1 + bar_height),
+            (cx + stem_width // 2, y1),
+            (cx - stem_width // 2, y1),
+            (cx - stem_width // 2, y1 + bar_height),
+            (x1, y1 + bar_height),
+        ]
+    if canonical in {"irregular_orthogonal", "inset_chamber"}:
+        depth = min(128, max(64, (y2 - y1) // 7))
+        first = x1 + max(128, (x2 - x1) // 5)
+        second = x1 + max(first + 128, (x2 - x1) * 3 // 5)
+        return [
+            (x1, y1),
+            (x1, y2),
+            (first, y2),
+            (first, y2 - depth),
+            (second, y2 - depth),
+            (second, y2),
+            (x2, y2),
+            (x2, y1),
+        ]
+    if canonical == "irregular_octagonal":
         chamfer = min(160, max(96, min(x2 - x1, y2 - y1) // 5))
-        _add_vertical_side(builder, x1, y1 + chamfer, y2 - chamfer, sector, by_side["left"], materials["wall"])
-        builder.add_line((x1, y2 - chamfer), (x1 + chamfer, y2), sector, texture=materials["wall"])
-        _add_horizontal_side(builder, x1 + chamfer, x2 - chamfer, y2, sector, by_side["top"], materials["wall"])
-        builder.add_line((x2 - chamfer, y2), (x2, y2 - chamfer), sector, texture=materials["wall"])
-        _add_vertical_side(builder, x2, y2 - chamfer, y1 + chamfer, sector, by_side["right"], materials["wall"])
-        builder.add_line((x2, y1 + chamfer), (x2 - chamfer, y1), sector, texture=materials["wall"])
-        _add_horizontal_side(builder, x2 - chamfer, x1 + chamfer, y1, sector, by_side["bottom"], materials["wall"])
-        builder.add_line((x1 + chamfer, y1), (x1, y1 + chamfer), sector, texture=materials["wall"])
-        return
-    _add_vertical_side(builder, x1, y1, y2, sector, by_side["left"], materials["wall"])
-    _add_horizontal_side(builder, x1, x2, y2, sector, by_side["bottom"], materials["wall"])
-    _add_vertical_side(builder, x2, y2, y1, sector, by_side["right"], materials["wall"])
-    _add_horizontal_side(builder, x2, x1, y1, sector, by_side["top"], materials["wall"])
+        return [
+            (x1, y1 + chamfer),
+            (x1, y2 - chamfer),
+            (x1 + chamfer, y2),
+            (x2 - chamfer, y2),
+            (x2, y2 - chamfer),
+            (x2, y1 + chamfer),
+            (x2 - chamfer, y1),
+            (x1 + chamfer, y1),
+        ]
+    raise ValueError(f"unsupported room shape {shape!r}")
+
+
+def _room_boundary_points(rect: Rect, shape: str, orientation: int = 0) -> list[Point]:
+    points = _canonical_room_boundary_points(rect, shape)
+    turn = orientation % 360
+    if turn not in {0, 90, 180, 270}:
+        raise ValueError(f"orientation must be a quarter turn, got {orientation!r}")
+    if turn == 0:
+        return points
+    cx = (rect[0] + rect[2]) // 2
+    cy = (rect[1] + rect[3]) // 2
+    rotated: list[Point] = []
+    for x, y in points:
+        dx, dy = x - cx, y - cy
+        if turn == 90:
+            rotated.append((cx - dy, cy + dx))
+        elif turn == 180:
+            rotated.append((cx - dx, cy - dy))
+        else:
+            rotated.append((cx + dy, cy - dx))
+    min_x = min(x for x, _y in rotated)
+    max_x = max(x for x, _y in rotated)
+    min_y = min(y for _x, y in rotated)
+    max_y = max(y for _x, y in rotated)
+    span_x = max(1, max_x - min_x)
+    span_y = max(1, max_y - min_y)
+    return [
+        (
+            rect[0] + round((x - min_x) * (rect[2] - rect[0]) / span_x),
+            rect[1] + round((y - min_y) * (rect[3] - rect[1]) / span_y),
+        )
+        for x, y in rotated
+    ]
 
 
 def _add_vertical_side(
@@ -572,8 +761,20 @@ def _add_connection(
     connection: dict[str, Any],
     door_tag: int,
     materials: dict[str, str],
+    *,
+    source_shape: str = "rectangle",
+    target_shape: str = "rectangle",
+    source_orientation: int = 0,
+    target_orientation: int = 0,
 ) -> dict[str, int]:
-    source_side, _target_side, source_point, target_point, _source_opening, _target_opening = _connection_portals(source, target)
+    source_side, _target_side, source_point, target_point, _source_opening, _target_opening = _connection_portals(
+        source,
+        target,
+        source_shape=source_shape,
+        target_shape=target_shape,
+        source_orientation=source_orientation,
+        target_orientation=target_orientation,
+    )
     sx, sy = source_point
     tx, ty = target_point
     floor = 0
@@ -790,6 +991,16 @@ def _add_height_features(
     features = space.get("height_topology", {}).get("features", [])
     if not isinstance(features, list):
         return 0
+    features = list(features)
+    shape = canonical_room_shape(space.get("shape", "rectangle"))
+    if not features and shape in {"raised_center", "depressed_floor"}:
+        features.append(
+            {
+                "type": "raised_central_structure" if shape == "raised_center" else "depressed_floor",
+                "floor_height": int(space.get("floor_height", 0)) + (32 if shape == "raised_center" else -24),
+                "placement": "central",
+            }
+        )
     count = 0
     base = int(space.get("floor_height", 0))
     ceiling = int(space.get("ceiling_height", base + 128))
@@ -854,6 +1065,17 @@ def _add_height_features(
                 )
                 builder.add_inner_rect(feature_rect, sector, parent_sector, texture=materials["lower_wall"])
                 count += 1
+        elif feature_type in {"raised_central_structure", "depressed_floor", "central_platform", "central_pit"}:
+            feature_floor = int(feature.get("floor_height", base + (32 if "raised" in str(feature_type) else -24)))
+            feature_rect = _feature_rect(rect, "central", index)
+            sector = builder.add_sector(
+                floor=feature_floor,
+                ceiling=ceiling,
+                texturefloor=materials["floor"],
+                textureceiling=materials["ceiling"],
+            )
+            builder.add_inner_rect(feature_rect, sector, parent_sector, texture=materials["lower_wall"])
+            count += 1
     return count
 
 
@@ -914,6 +1136,9 @@ def _feature_rect(rect: Rect, placement: str, index: int) -> Rect:
     height = min(160, max(128, (y2 - y1) // 4))
     if placement == "north":
         return (x2 - width - 128, y2 - height - 128 - index * 16, x2 - 128, y2 - 128 - index * 16)
+    if placement == "central":
+        cx, cy = _center(rect)
+        return (cx - width // 2, cy - height // 2, cx + width // 2, cy + height // 2)
     return (x1 + 128, y1 + 128 + index * 16, x1 + 128 + width, y1 + 128 + height + index * 16)
 
 
@@ -1052,7 +1277,11 @@ def _room_point_candidates(rect: Rect) -> list[Point]:
 def _blocking_feature_rects(space: dict[str, Any], rect: Rect) -> list[Rect]:
     features = space.get("height_topology", {}).get("features", [])
     if not isinstance(features, list):
-        return []
+        features = []
+    features = list(features)
+    shape = canonical_room_shape(space.get("shape", "rectangle"))
+    if not features and shape in {"raised_center", "depressed_floor"}:
+        features.append({"type": shape, "placement": "central", "blocks_movement": False})
     blocked: list[Rect] = []
     for index, feature in enumerate(features):
         if not isinstance(feature, dict):
@@ -1068,6 +1297,8 @@ def _blocking_feature_rects(space: dict[str, Any], rect: Rect) -> list[Rect]:
                 blocked.append(_feature_rect(rect, "north", index))
             elif feature_type in {"shallow_pit", "pit"}:
                 blocked.append(_feature_rect(rect, "south", index))
+            elif feature_type in {"raised_central_structure", "depressed_floor", "central_platform", "central_pit"}:
+                blocked.append(_feature_rect(rect, "central", index))
     return blocked
 
 
