@@ -14,7 +14,7 @@ from romerodsl.schema import validate_document
 from romerodsl.wad import validate_wad
 
 
-PHASE6_BENCHMARK_VERSION = "phase6_no_repair_v1"
+PHASE6_BENCHMARK_VERSION = "phase6_no_repair_v2"
 
 
 def _benchmark_case(
@@ -54,7 +54,7 @@ def _benchmark_case(
 # smoke suite. Keep their ids and wording stable: changing them invalidates benchmark
 # comparisons. There are eight held-out design families in each complexity tier.
 _PHASE6_CASE_SPECS = [
-    ("b01", "basic", "courtyard_route", "Build a four-room courtyard route with a red keycard and a red locked exit door.", 4, ("red",), (), 0, 0, 1, ()),
+    ("b01", "basic", "courtyard_route", "Build a four-room courtyard route with a red keycard and a red locked exit door.", 4, ("red",), ("red",), 0, 0, 1, ()),
     ("b02", "basic", "maintenance_loop", "Build a three-room maintenance loop with no keys and no locked doors, connecting the start to the exit.", 3, (), (), 0, 1, 1, ()),
     ("b03", "basic", "blue_storage", "Build a five-room blue storage route: place a blue key before one blue locked doorway and put the exit beyond it.", 5, ("blue",), ("blue",), 0, 0, 1, ()),
     ("b04", "basic", "yellow_shaft", "Build a four-room yellow access map with stairs, a yellow key, and a matching yellow locked exit.", 4, ("yellow",), ("yellow",), 0, 0, 2, ("stairs",)),
@@ -72,7 +72,7 @@ _PHASE6_CASE_SPECS = [
     ("i08", "intermediate", "no_lock_lab", "Build a seven-room laboratory with a connected start-to-exit route, varied rooms, and explicitly no keys or locked doors.", 7, (), (), 1, 0, 1, ()),
     ("a01", "advanced", "three_gate_fortress", "Build a twelve-room fortress with sequential blue, red, then yellow keys and matching required locked gates before the exit.", 12, ("blue", "red", "yellow"), ("blue", "red", "yellow"), 1, 0, 1, ()),
     ("a02", "advanced", "hell_loop", "Build an eleven-room hell loop with a red key branch, a red locked exit, multiple combat spaces, and a return route.", 11, ("red",), ("red",), 1, 1, 1, ()),
-    ("a03", "advanced", "vertical_uac", "Build a thirteen-room vertical UAC complex with stairs, a pit, a raised platform, and a blue locked final exit.", 13, ("blue",), ("blue",), 1, 1, 3, ("stairs", "pit", "platform")),
+    ("a03", "advanced", "vertical_uac", "Build a thirteen-room vertical UAC complex with stairs, a pit, a raised platform, a blue key, and a blue locked final exit.", 13, ("blue",), ("blue",), 1, 1, 3, ("stairs", "pit", "platform")),
     ("a04", "advanced", "industrial_maze", "Build a ten-room branching industrial maze with a yellow key behind a combat room and a yellow required gate.", 10, ("yellow",), ("yellow",), 2, 0, 1, ()),
     ("a05", "advanced", "dual_route", "Build a fourteen-room map with two connected routes, a blue key, a blue gate, and a secret reward room that is not required for the exit.", 14, ("blue",), ("blue",), 2, 1, 1, ("secret",)),
     ("a06", "advanced", "red_blue_bastion", "Build a twelve-room bastion where the red key opens a red gate before the blue key, then the blue gate leads to the exit.", 12, ("red", "blue"), ("red", "blue"), 1, 0, 1, ()),
@@ -82,7 +82,7 @@ _PHASE6_CASE_SPECS = [
     ("e02", "expert", "multi_loop_ruins", "Build an eighteen-room ruin with two independent loops, a red key side route, a red locked exit, secrets, and varied elevation.", 18, ("red",), ("red",), 2, 2, 2, ("secret",)),
     ("e03", "expert", "vertical_foundry", "Build a twenty-two-room foundry spanning four height levels with stairs, pits, platforms, a blue key, and a blue required exit lock.", 22, ("blue",), ("blue",), 2, 1, 4, ("stairs", "pit", "platform")),
     ("e04", "expert", "three_wing_labyrinth", "Build a twenty-four-room labyrinth with three branching wings, a yellow key in one wing, a yellow gate, and a loopback to the hub.", 24, ("yellow",), ("yellow",), 3, 2, 1, ()),
-    ("e05", "expert", "dual_sequence_keep", "Build a sixteen-room keep where blue then red keys open matching sequential doors, with a secret reward branch and an exit after red.", 16, ("blue", "red"), ("blue", "red"), 2, 1, 1, ("secret",)),
+    ("e05", "expert", "dual_sequence_keep", "Build a sixteen-room keep where blue then red keys open matching blue and red locked doors, with a secret reward branch and an exit after red.", 16, ("blue", "red"), ("blue", "red"), 2, 1, 1, ("secret",)),
     ("e06", "expert", "open_expedition", "Build a nineteen-room expedition map with multiple loops, varied height features, combat branches, and explicitly no keys or locked doors.", 19, (), (), 2, 2, 2, ()),
     ("e07", "expert", "colorless_arena", "Build a seventeen-room arena complex with three combat branches, a raised center, no keycards, no locked doors, and a connected exit route.", 17, (), (), 2, 1, 2, ("platform",)),
     ("e08", "expert", "final_procession", "Build a twenty-three-room procession with blue, yellow, then red keys on the critical path, matching gates, loops, secrets, and a final exit.", 23, ("blue", "yellow", "red"), ("blue", "yellow", "red"), 2, 2, 1, ("secret",)),
@@ -91,6 +91,67 @@ PHASE6_BENCHMARK_CASES: list[dict[str, Any]] = [
     _benchmark_case(*spec[:6], locked_doors=spec[6], min_branch_nodes=spec[7], min_cycles=spec[8], min_height_levels=spec[9], required_features=spec[10])
     for spec in _PHASE6_CASE_SPECS
 ]
+
+
+def validate_phase6_benchmark_definitions(
+    cases: Sequence[dict[str, Any]] | None = None,
+) -> list[str]:
+    """Return contradictions in the held-out benchmark contract.
+
+    This validates the benchmark itself, not a model output.  It deliberately
+    checks only requirements that can be derived from the stable prompt text and
+    case fields, so a valid case can still describe an unusual but supported map.
+    """
+
+    selected = list(PHASE6_BENCHMARK_CASES if cases is None else cases)
+    errors: list[str] = []
+    seen_ids: set[str] = set()
+    for case in selected:
+        case_id = str(case.get("id", "unknown"))
+        if case_id in seen_ids:
+            errors.append(f"{case_id}: duplicate case id")
+        seen_ids.add(case_id)
+        prompt = str(case.get("prompt", "")).lower()
+        expected_keys = {str(value) for value in case.get("expected_key_colors", [])}
+        expected_gates = {str(value) for value in case.get("expected_locked_door_colors", [])}
+        if not expected_gates.issubset(expected_keys):
+            errors.append(f"{case_id}: locked-door colors are missing matching key colors")
+        if ("no key" in prompt or "no keycard" in prompt) and expected_keys:
+            errors.append(f"{case_id}: prompt forbids keys but expected keys are declared")
+        if ("no locked door" in prompt or "no locked doors" in prompt) and expected_gates:
+            errors.append(f"{case_id}: prompt forbids locked doors but expected locks are declared")
+        if expected_keys and "key" not in prompt:
+            errors.append(f"{case_id}: expected key colors are not requested in the prompt")
+        if expected_gates and not any(token in prompt for token in ("locked", "lock", "gate")):
+            errors.append(f"{case_id}: expected locked doors are not requested in the prompt")
+        requested_rooms = requested_space_count_from_prompt(str(case.get("prompt", "")))
+        expected_rooms = case.get("expected_room_count")
+        if requested_rooms is not None and requested_rooms != expected_rooms:
+            errors.append(
+                f"{case_id}: prompt requests {requested_rooms} rooms but benchmark expects {expected_rooms}"
+            )
+        prompt_features = set(re.findall(r"[a-z]+", prompt))
+        feature_aliases = {
+            "stairs": {"stair", "stairs", "stairwell", "stairwell"},
+            "pit": {"pit", "pits"},
+            "platform": {"platform", "platforms", "raised", "raised-center"},
+            "secret": {"secret", "secrets"},
+        }
+        for feature in case.get("required_features", []):
+            aliases = feature_aliases.get(str(feature).lower(), {str(feature).lower()})
+            if not prompt_features.intersection(aliases):
+                errors.append(f"{case_id}: required feature {feature!r} is absent from the prompt")
+        if any(token in prompt for token in ("loop", "loopback", "ring")) and int(case.get("min_cycles", 0) or 0) < 1:
+            errors.append(f"{case_id}: loop prompt requires at least one cycle")
+        if any(token in prompt for token in ("branch", "branching", "hub", "crossroads", "wings")) and int(case.get("min_branch_nodes", 0) or 0) < 1:
+            errors.append(f"{case_id}: branching prompt requires at least one branch node")
+        if (not expected_keys) != (case.get("max_keys") == 0):
+            errors.append(f"{case_id}: max_keys does not match the key expectation")
+        if (not expected_gates) != (case.get("max_locked_doors") == 0):
+            errors.append(f"{case_id}: max_locked_doors does not match the lock expectation")
+        if int(case.get("min_height_levels", 0) or 0) < 1:
+            errors.append(f"{case_id}: minimum floor elevation count must be positive")
+    return errors
 
 
 V08_PROMPT_CASES: list[dict[str, Any]] = [
@@ -233,6 +294,18 @@ NUMBER_WORDS = {
     "ten": 10,
     "eleven": 11,
     "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+    "twenty-one": 21,
+    "twenty-two": 22,
+    "twenty-three": 23,
+    "twenty-four": 24,
 }
 
 
@@ -255,8 +328,8 @@ def requested_space_count_from_prompt(prompt: str) -> int | None:
     numeric = re.search(r"\b(\d{1,2})\s*[- ]?\s*(?:room|rooms|space|spaces)\b", text)
     if numeric:
         return int(numeric.group(1))
-    for word, value in NUMBER_WORDS.items():
-        if re.search(rf"\b{word}\s*[- ]?\s*(?:room|rooms|space|spaces)\b", text):
+    for word, value in sorted(NUMBER_WORDS.items(), key=lambda item: -len(item[0])):
+        if re.search(rf"\b{re.escape(word)}\s*[- ]?\s*(?:room|rooms|space|spaces)\b", text):
             return value
     return None
 
@@ -653,6 +726,11 @@ def run_no_repair_benchmark(
     Existing non-empty output directories are protected unless ``overwrite=True``.
     """
 
+    definition_errors = validate_phase6_benchmark_definitions()
+    if definition_errors:
+        raise ValueError(
+            "invalid Phase 6 benchmark definitions: " + "; ".join(definition_errors)
+        )
     selected = list(PHASE6_BENCHMARK_CASES if cases is None else cases)
     if cases is None and len(selected) < 30:
         raise ValueError("the permanent Phase 6 benchmark must contain at least 30 cases")
@@ -695,6 +773,7 @@ def run_no_repair_benchmark(
         summary["first_pass_success"] += int(bool(result.get("first_pass_success")))
     report = {
         "benchmark_version": PHASE6_BENCHMARK_VERSION,
+        "benchmark_definition_validation": {"valid": True, "errors": []},
         "evaluation_mode": "strict_no_repair",
         "repair_applied": False,
         "iterative_correction_evaluated": False,
@@ -762,24 +841,10 @@ def _evaluate_benchmark_constraints(
         graph_for_cycles.setdefault(target, set()).add(source)
     graph_components = _graph_components(graph_for_cycles)
     cycle_count = max(0, len(undirected) - len(graph_for_cycles) + len(graph_components))
-    height_levels: set[int] = set()
-    for space in spaces:
-        if not isinstance(space, dict):
-            continue
-        for field in ("floor_height", "ceiling_height"):
-            if isinstance(space.get(field), (int, float)):
-                height_levels.add(int(space[field]))
-        topology = space.get("height_topology")
-        features = topology.get("features", []) if isinstance(topology, dict) else []
-        for feature in features if isinstance(features, list) else []:
-            if not isinstance(feature, dict):
-                continue
-            for field in ("floor_height", "ceiling_height"):
-                if isinstance(feature.get(field), (int, float)):
-                    height_levels.add(int(feature[field]))
+    height = _height_evaluation(document)
     branch_pass = branch_nodes >= int(case.get("min_branch_nodes", 0) or 0)
     cycle_pass = cycle_count >= int(case.get("min_cycles", 0) or 0)
-    height_pass = len(height_levels) >= int(case.get("min_height_levels", 1) or 1)
+    height_pass = len(height["floor_elevation_levels"]) >= int(case.get("min_height_levels", 1) or 1)
     key_lock_behavior_valid = (
         generated_keys == expected_keys
         and generated_gates == expected_gates
@@ -812,11 +877,86 @@ def _evaluate_benchmark_constraints(
         "cycle_count": cycle_count,
         "min_cycles": int(case.get("min_cycles", 0) or 0),
         "cycle_requirement_pass": cycle_pass,
-        "height_level_count": len(height_levels),
+        "height_level_count": len(height["floor_elevation_levels"]),
         "min_height_levels": int(case.get("min_height_levels", 1) or 1),
         "height_requirement_pass": height_pass,
+        **height,
         "missing_required_features": missing_features,
         "prompt_contract_valid": bool(intent.get("prompt_contract_valid", True)),
+    }
+
+
+def _height_evaluation(document: dict[str, Any]) -> dict[str, Any]:
+    """Measure walkable floor structure separately from ceiling structure."""
+
+    spaces = [space for space in document.get("spaces", []) if isinstance(space, dict)]
+    by_id = {
+        str(space["id"]): space
+        for space in spaces
+        if isinstance(space.get("id"), str)
+    }
+    floor_levels: set[int] = set()
+    ceiling_levels: set[int] = set()
+    transitions: set[tuple[Any, ...]] = set()
+    raised_platforms = 0
+    lowered_floors = 0
+    accessible_stairs = 0
+
+    for space in spaces:
+        space_id = str(space.get("id", ""))
+        base_floor = space.get("floor_height")
+        if isinstance(base_floor, (int, float)):
+            floor_levels.add(int(base_floor))
+        ceiling = space.get("ceiling_height")
+        if isinstance(ceiling, (int, float)):
+            ceiling_levels.add(int(ceiling))
+        topology = space.get("height_topology")
+        features = topology.get("features", []) if isinstance(topology, dict) else []
+        if not isinstance(features, list):
+            continue
+        for index, feature in enumerate(features):
+            if not isinstance(feature, dict):
+                continue
+            feature_floor = feature.get("floor_height")
+            if isinstance(feature_floor, (int, float)):
+                feature_floor = int(feature_floor)
+                floor_levels.add(feature_floor)
+                if isinstance(base_floor, (int, float)) and feature_floor != int(base_floor):
+                    transitions.add((space_id, "feature", index, int(base_floor), feature_floor))
+            feature_type = str(feature.get("type", "")).lower()
+            access = str(feature.get("access", "")).lower()
+            if "platform" in feature_type or "raised" in feature_type:
+                raised_platforms += 1
+            if any(token in feature_type for token in ("pit", "lowered", "depressed")):
+                lowered_floors += 1
+            if "stair" in feature_type or "stair" in access:
+                accessible_stairs += 1
+
+    for connection in document.get("connections", []):
+        if not isinstance(connection, dict):
+            continue
+        source = connection.get("from")
+        target = connection.get("to")
+        source_space = by_id.get(source) if isinstance(source, str) else None
+        target_space = by_id.get(target) if isinstance(target, str) else None
+        source_floor = source_space.get("floor_height") if source_space else None
+        target_floor = target_space.get("floor_height") if target_space else None
+        if isinstance(source_floor, (int, float)) and isinstance(target_floor, (int, float)):
+            source_floor = int(source_floor)
+            target_floor = int(target_floor)
+            if source_floor != target_floor:
+                transitions.add((source, target, source_floor, target_floor))
+        connection_type = str(connection.get("type", "")).lower()
+        if "stair" in connection_type:
+            accessible_stairs += 1
+
+    return {
+        "floor_elevation_levels": sorted(floor_levels),
+        "ceiling_elevation_levels": sorted(ceiling_levels),
+        "elevation_transition_count": len(transitions),
+        "raised_platform_count": raised_platforms,
+        "lowered_floor_count": lowered_floors,
+        "accessible_stair_count": accessible_stairs,
     }
 
 

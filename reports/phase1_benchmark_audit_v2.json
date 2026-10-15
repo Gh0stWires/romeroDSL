@@ -1,0 +1,596 @@
+{
+  "benchmark_version": "phase6_no_repair_v2",
+  "case_count": 32,
+  "cases": [
+    {
+      "complexity_tier": "basic",
+      "design_family": "courtyard_route",
+      "expected_key_colors": [
+        "red"
+      ],
+      "expected_locked_door_colors": [
+        "red"
+      ],
+      "expected_room_count": 4,
+      "id": "b01",
+      "min_branch_nodes": 0,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a four-room courtyard route with a red keycard and a red locked exit door.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "basic",
+      "design_family": "maintenance_loop",
+      "expected_key_colors": [],
+      "expected_locked_door_colors": [],
+      "expected_room_count": 3,
+      "id": "b02",
+      "min_branch_nodes": 0,
+      "min_cycles": 1,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a three-room maintenance loop with no keys and no locked doors, connecting the start to the exit.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "basic",
+      "design_family": "blue_storage",
+      "expected_key_colors": [
+        "blue"
+      ],
+      "expected_locked_door_colors": [
+        "blue"
+      ],
+      "expected_room_count": 5,
+      "id": "b03",
+      "min_branch_nodes": 0,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a five-room blue storage route: place a blue key before one blue locked doorway and put the exit beyond it.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "basic",
+      "design_family": "yellow_shaft",
+      "expected_key_colors": [
+        "yellow"
+      ],
+      "expected_locked_door_colors": [
+        "yellow"
+      ],
+      "expected_room_count": 4,
+      "id": "b04",
+      "min_branch_nodes": 0,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 2,
+      "prompt": "Build a four-room yellow access map with stairs, a yellow key, and a matching yellow locked exit.",
+      "required_features": [
+        "stairs"
+      ]
+    },
+    {
+      "complexity_tier": "basic",
+      "design_family": "plain_arena",
+      "expected_key_colors": [],
+      "expected_locked_door_colors": [],
+      "expected_room_count": 3,
+      "id": "b05",
+      "min_branch_nodes": 0,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a three-room plain arena route with no key requirement, no locked doors, and a small combat encounter.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "basic",
+      "design_family": "red_armory",
+      "expected_key_colors": [
+        "red"
+      ],
+      "expected_locked_door_colors": [
+        "red"
+      ],
+      "expected_room_count": 5,
+      "id": "b06",
+      "min_branch_nodes": 1,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a five-room red armory route with a red key in a side room and a red locked final room.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "basic",
+      "design_family": "blue_pit",
+      "expected_key_colors": [
+        "blue"
+      ],
+      "expected_locked_door_colors": [
+        "blue"
+      ],
+      "expected_room_count": 4,
+      "id": "b07",
+      "min_branch_nodes": 0,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 2,
+      "prompt": "Build a four-room blue pit map with a shallow pit, a blue key, and a blue lock on the exit route.",
+      "required_features": [
+        "pit"
+      ]
+    },
+    {
+      "complexity_tier": "basic",
+      "design_family": "yellow_hub",
+      "expected_key_colors": [
+        "yellow"
+      ],
+      "expected_locked_door_colors": [
+        "yellow"
+      ],
+      "expected_room_count": 5,
+      "id": "b08",
+      "min_branch_nodes": 1,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a five-room yellow hub-and-branch map with one yellow key and one matching locked door.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "intermediate",
+      "design_family": "red_crossroads",
+      "expected_key_colors": [
+        "red"
+      ],
+      "expected_locked_door_colors": [
+        "red"
+      ],
+      "expected_room_count": 7,
+      "id": "i01",
+      "min_branch_nodes": 1,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a seven-room industrial crossroads with branching combat rooms, a red key, and a red locked exit gate.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "intermediate",
+      "design_family": "blue_ring",
+      "expected_key_colors": [
+        "blue"
+      ],
+      "expected_locked_door_colors": [
+        "blue"
+      ],
+      "expected_room_count": 8,
+      "id": "i02",
+      "min_branch_nodes": 0,
+      "min_cycles": 1,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build an eight-room blue ring layout with a loop, a blue key on the loop, and a blue locked door leading to the exit.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "intermediate",
+      "design_family": "yellow_stairwell",
+      "expected_key_colors": [
+        "yellow"
+      ],
+      "expected_locked_door_colors": [
+        "yellow"
+      ],
+      "expected_room_count": 6,
+      "id": "i03",
+      "min_branch_nodes": 0,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 3,
+      "prompt": "Build a six-room yellow industrial stairwell with multiple floor heights, a yellow key, and a required yellow lock.",
+      "required_features": [
+        "stairs"
+      ]
+    },
+    {
+      "complexity_tier": "intermediate",
+      "design_family": "dual_key_depot",
+      "expected_key_colors": [
+        "blue",
+        "red"
+      ],
+      "expected_locked_door_colors": [
+        "blue",
+        "red"
+      ],
+      "expected_room_count": 9,
+      "id": "i04",
+      "min_branch_nodes": 1,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a nine-room depot where a blue key opens the blue gate and a red key opens the red exit gate in sequence.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "intermediate",
+      "design_family": "secret_catwalk",
+      "expected_key_colors": [
+        "yellow"
+      ],
+      "expected_locked_door_colors": [
+        "yellow"
+      ],
+      "expected_room_count": 7,
+      "id": "i05",
+      "min_branch_nodes": 1,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a seven-room exploration map with a non-required secret side room, a yellow key, and a yellow locked final corridor.",
+      "required_features": [
+        "secret"
+      ]
+    },
+    {
+      "complexity_tier": "intermediate",
+      "design_family": "arena_loop",
+      "expected_key_colors": [
+        "blue"
+      ],
+      "expected_locked_door_colors": [
+        "blue"
+      ],
+      "expected_room_count": 8,
+      "id": "i06",
+      "min_branch_nodes": 1,
+      "min_cycles": 1,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build an eight-room arena loop with a blue key before a blue locked exit and at least one branch for resources.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "intermediate",
+      "design_family": "red_lift",
+      "expected_key_colors": [
+        "red"
+      ],
+      "expected_locked_door_colors": [
+        "red"
+      ],
+      "expected_room_count": 6,
+      "id": "i07",
+      "min_branch_nodes": 0,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 2,
+      "prompt": "Build a six-room red lift approach with a raised platform, a red key, and a red locked door on the critical path.",
+      "required_features": [
+        "platform"
+      ]
+    },
+    {
+      "complexity_tier": "intermediate",
+      "design_family": "no_lock_lab",
+      "expected_key_colors": [],
+      "expected_locked_door_colors": [],
+      "expected_room_count": 7,
+      "id": "i08",
+      "min_branch_nodes": 1,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a seven-room laboratory with a connected start-to-exit route, varied rooms, and explicitly no keys or locked doors.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "advanced",
+      "design_family": "three_gate_fortress",
+      "expected_key_colors": [
+        "blue",
+        "red",
+        "yellow"
+      ],
+      "expected_locked_door_colors": [
+        "blue",
+        "red",
+        "yellow"
+      ],
+      "expected_room_count": 12,
+      "id": "a01",
+      "min_branch_nodes": 1,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a twelve-room fortress with sequential blue, red, then yellow keys and matching required locked gates before the exit.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "advanced",
+      "design_family": "hell_loop",
+      "expected_key_colors": [
+        "red"
+      ],
+      "expected_locked_door_colors": [
+        "red"
+      ],
+      "expected_room_count": 11,
+      "id": "a02",
+      "min_branch_nodes": 1,
+      "min_cycles": 1,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build an eleven-room hell loop with a red key branch, a red locked exit, multiple combat spaces, and a return route.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "advanced",
+      "design_family": "vertical_uac",
+      "expected_key_colors": [
+        "blue"
+      ],
+      "expected_locked_door_colors": [
+        "blue"
+      ],
+      "expected_room_count": 13,
+      "id": "a03",
+      "min_branch_nodes": 1,
+      "min_cycles": 1,
+      "min_floor_elevation_levels": 3,
+      "prompt": "Build a thirteen-room vertical UAC complex with stairs, a pit, a raised platform, and a blue locked final exit.",
+      "required_features": [
+        "stairs",
+        "pit",
+        "platform"
+      ]
+    },
+    {
+      "complexity_tier": "advanced",
+      "design_family": "industrial_maze",
+      "expected_key_colors": [
+        "yellow"
+      ],
+      "expected_locked_door_colors": [
+        "yellow"
+      ],
+      "expected_room_count": 10,
+      "id": "a04",
+      "min_branch_nodes": 2,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a ten-room branching industrial maze with a yellow key behind a combat room and a yellow required gate.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "advanced",
+      "design_family": "dual_route",
+      "expected_key_colors": [
+        "blue"
+      ],
+      "expected_locked_door_colors": [
+        "blue"
+      ],
+      "expected_room_count": 14,
+      "id": "a05",
+      "min_branch_nodes": 2,
+      "min_cycles": 1,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a fourteen-room map with two connected routes, a blue key, a blue gate, and a secret reward room that is not required for the exit.",
+      "required_features": [
+        "secret"
+      ]
+    },
+    {
+      "complexity_tier": "advanced",
+      "design_family": "red_blue_bastion",
+      "expected_key_colors": [
+        "red",
+        "blue"
+      ],
+      "expected_locked_door_colors": [
+        "red",
+        "blue"
+      ],
+      "expected_room_count": 12,
+      "id": "a06",
+      "min_branch_nodes": 1,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a twelve-room bastion where the red key opens a red gate before the blue key, then the blue gate leads to the exit.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "advanced",
+      "design_family": "elevation_gallery",
+      "expected_key_colors": [
+        "yellow"
+      ],
+      "expected_locked_door_colors": [
+        "yellow"
+      ],
+      "expected_room_count": 15,
+      "id": "a07",
+      "min_branch_nodes": 2,
+      "min_cycles": 0,
+      "min_floor_elevation_levels": 3,
+      "prompt": "Build a fifteen-room map with three distinct height levels, stairs between them, a yellow key, and a yellow locked exit.",
+      "required_features": [
+        "stairs"
+      ]
+    },
+    {
+      "complexity_tier": "advanced",
+      "design_family": "resource_bypass",
+      "expected_key_colors": [],
+      "expected_locked_door_colors": [],
+      "expected_room_count": 10,
+      "id": "a08",
+      "min_branch_nodes": 1,
+      "min_cycles": 1,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a ten-room combat map with a loopback resource route, no locked doors, no required keys, and a reachable exit.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "expert",
+      "design_family": "four_stage_citadel",
+      "expected_key_colors": [
+        "blue",
+        "red",
+        "yellow"
+      ],
+      "expected_locked_door_colors": [
+        "blue",
+        "red",
+        "yellow"
+      ],
+      "expected_room_count": 20,
+      "id": "e01",
+      "min_branch_nodes": 2,
+      "min_cycles": 1,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a twenty-room citadel with sequential blue, red, yellow, and blue-key gates, branches, and a final exit beyond all required gates.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "expert",
+      "design_family": "multi_loop_ruins",
+      "expected_key_colors": [
+        "red"
+      ],
+      "expected_locked_door_colors": [
+        "red"
+      ],
+      "expected_room_count": 18,
+      "id": "e02",
+      "min_branch_nodes": 2,
+      "min_cycles": 2,
+      "min_floor_elevation_levels": 2,
+      "prompt": "Build an eighteen-room ruin with two independent loops, a red key side route, a red locked exit, secrets, and varied elevation.",
+      "required_features": [
+        "secret"
+      ]
+    },
+    {
+      "complexity_tier": "expert",
+      "design_family": "vertical_foundry",
+      "expected_key_colors": [
+        "blue"
+      ],
+      "expected_locked_door_colors": [
+        "blue"
+      ],
+      "expected_room_count": 22,
+      "id": "e03",
+      "min_branch_nodes": 2,
+      "min_cycles": 1,
+      "min_floor_elevation_levels": 4,
+      "prompt": "Build a twenty-two-room foundry spanning four height levels with stairs, pits, platforms, a blue key, and a blue required exit lock.",
+      "required_features": [
+        "stairs",
+        "pit",
+        "platform"
+      ]
+    },
+    {
+      "complexity_tier": "expert",
+      "design_family": "three_wing_labyrinth",
+      "expected_key_colors": [
+        "yellow"
+      ],
+      "expected_locked_door_colors": [
+        "yellow"
+      ],
+      "expected_room_count": 24,
+      "id": "e04",
+      "min_branch_nodes": 3,
+      "min_cycles": 2,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a twenty-four-room labyrinth with three branching wings, a yellow key in one wing, a yellow gate, and a loopback to the hub.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "expert",
+      "design_family": "dual_sequence_keep",
+      "expected_key_colors": [
+        "blue",
+        "red"
+      ],
+      "expected_locked_door_colors": [
+        "blue",
+        "red"
+      ],
+      "expected_room_count": 16,
+      "id": "e05",
+      "min_branch_nodes": 2,
+      "min_cycles": 1,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a sixteen-room keep where blue then red keys open matching sequential doors, with a secret reward branch and an exit after red.",
+      "required_features": [
+        "secret"
+      ]
+    },
+    {
+      "complexity_tier": "expert",
+      "design_family": "open_expedition",
+      "expected_key_colors": [],
+      "expected_locked_door_colors": [],
+      "expected_room_count": 19,
+      "id": "e06",
+      "min_branch_nodes": 2,
+      "min_cycles": 2,
+      "min_floor_elevation_levels": 2,
+      "prompt": "Build a nineteen-room expedition map with multiple loops, varied height features, combat branches, and explicitly no keys or locked doors.",
+      "required_features": []
+    },
+    {
+      "complexity_tier": "expert",
+      "design_family": "colorless_arena",
+      "expected_key_colors": [],
+      "expected_locked_door_colors": [],
+      "expected_room_count": 17,
+      "id": "e07",
+      "min_branch_nodes": 2,
+      "min_cycles": 1,
+      "min_floor_elevation_levels": 2,
+      "prompt": "Build a seventeen-room arena complex with three combat branches, a raised center, no keycards, no locked doors, and a connected exit route.",
+      "required_features": [
+        "platform"
+      ]
+    },
+    {
+      "complexity_tier": "expert",
+      "design_family": "final_procession",
+      "expected_key_colors": [
+        "blue",
+        "yellow",
+        "red"
+      ],
+      "expected_locked_door_colors": [
+        "blue",
+        "yellow",
+        "red"
+      ],
+      "expected_room_count": 23,
+      "id": "e08",
+      "min_branch_nodes": 2,
+      "min_cycles": 2,
+      "min_floor_elevation_levels": 1,
+      "prompt": "Build a twenty-three-room procession with blue, yellow, then red keys on the critical path, matching gates, loops, secrets, and a final exit.",
+      "required_features": [
+        "secret"
+      ]
+    }
+  ],
+  "definition_errors": [
+    "i03: required feature 'stairs' is absent from the prompt",
+    "a03: expected key colors are not requested in the prompt",
+    "e02: required feature 'secret' is absent from the prompt",
+    "e03: prompt requests 2 rooms but benchmark expects 22",
+    "e03: required feature 'pit' is absent from the prompt",
+    "e03: required feature 'platform' is absent from the prompt",
+    "e04: prompt requests 4 rooms but benchmark expects 24",
+    "e05: expected locked doors are not requested in the prompt",
+    "e07: required feature 'platform' is absent from the prompt",
+    "e08: prompt requests 3 rooms but benchmark expects 23",
+    "e08: required feature 'secret' is absent from the prompt"
+  ],
+  "definition_valid": false,
+  "elevation_measurement": {
+    "ceiling_levels": "space and feature ceiling_height values, reported separately",
+    "platforms_and_lowered_floors": "raised/platform and pit/lowered/depressed feature counts reported separately",
+    "stairs": "stair features and stair connection types counted separately",
+    "transitions": "connected spaces with different floor heights plus features offset from their base floor",
+    "walkable_floor_levels": "space floor_height plus declared height-feature floor_height values"
+  },
+  "report": "phase1_benchmark_audit"
+}

@@ -14,8 +14,11 @@ from romerodsl.evaluation import (
     v08_prompt_expectations,
     v08_prompt_suite,
     PHASE6_BENCHMARK_CASES,
+    PHASE6_BENCHMARK_VERSION,
     evaluate_no_repair_output,
     run_no_repair_benchmark,
+    validate_phase6_benchmark_definitions,
+    _evaluate_benchmark_constraints,
 )
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "blue_lock_processing.json"
@@ -176,6 +179,30 @@ class EvaluationTests(unittest.TestCase):
             len(PHASE6_BENCHMARK_CASES),
         )
 
+    def test_phase6_benchmark_definitions_are_self_consistent(self) -> None:
+        self.assertEqual(validate_phase6_benchmark_definitions(), [])
+        b01 = next(case for case in PHASE6_BENCHMARK_CASES if case["id"] == "b01")
+        self.assertEqual(b01["expected_key_colors"], ["red"])
+        self.assertEqual(b01["expected_locked_door_colors"], ["red"])
+
+    def test_floor_height_requirement_ignores_ceiling_height(self) -> None:
+        case = next(case for case in PHASE6_BENCHMARK_CASES if case["id"] == "a07")
+        document = {
+            "spaces": [
+                {"id": "start", "floor_height": 0, "ceiling_height": 128},
+                {"id": "exit", "floor_height": 0, "ceiling_height": 192},
+            ],
+            "connections": [{"from": "start", "to": "exit"}],
+            "progression": {"keys": [], "gates": []},
+        }
+
+        result = _evaluate_benchmark_constraints(case, document, {"prompt_contract_valid": True})
+
+        self.assertEqual(result["floor_elevation_levels"], [0])
+        self.assertEqual(result["ceiling_elevation_levels"], [128, 192])
+        self.assertEqual(result["elevation_transition_count"], 0)
+        self.assertFalse(result["height_requirement_pass"])
+
     def test_no_repair_evaluation_preserves_raw_failure_and_categories(self) -> None:
         case = PHASE6_BENCHMARK_CASES[0]
         raw = '{"dsl_version": "0.1", "spaces": ['
@@ -219,7 +246,7 @@ class EvaluationTests(unittest.TestCase):
                 Path(directory),
                 cases=cases,
             )
-            self.assertEqual(report["benchmark_version"], "phase6_no_repair_v1")
+            self.assertEqual(report["benchmark_version"], PHASE6_BENCHMARK_VERSION)
             raw_path = Path(directory) / cases[0]["id"] / "raw_output.txt"
             result_path = Path(directory) / cases[0]["id"] / "result.json"
             self.assertEqual(raw_path.read_text(encoding="utf-8"), document)
