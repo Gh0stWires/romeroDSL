@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from romerodsl.extraction import generate_synthetic_training_records, structural_layout_signature
-from romerodsl.finetune import sft_record_from_training_record
+from romerodsl.finetune import SYSTEM_PROMPT, sft_record_from_training_record
 from romerodsl.metrics import structural_metrics
 from romerodsl.schema import validate_document
 
@@ -19,13 +19,6 @@ GOLDEN = ROOT / "examples/complex_eight_room_bfg.json"
 OUT = ROOT / "build/v11_gemma_sft/romerodsl_sft_gemma_light_real_wad_only.jsonl"
 SUMMARY = OUT.with_suffix(OUT.suffix + ".summary.json")
 SEED = 20261010
-SYSTEM_PROMPT = (
-    "You generate valid romeroDSL JSON for Doom II maps. "
-    "Return only one JSON object. Do not wrap it in markdown. "
-    "Use only valid Doom II material names that appear in training examples. "
-    "BFG is an item reward named bfg9000, never a key or gate type. "
-    "Required locked gates must be real route gates; do not create bypass connections around them."
-)
 BUCKET_QUOTAS = {
     "required_multi_lock": 1200,
     "required_single_lock": 900,

@@ -1,0 +1,30 @@
+{
+  "strategy": "explicit_staged_long_example_holdout",
+  "source": "C:\\Users\\gh0st\\Documents\\RomeroGan\\romeroDSL\\build\\phase7_gemma_sft\\romerodsl_sft_gemma_phase7_controlled.jsonl",
+  "source_sha256": "228b98da721ebefc0175ead7e2b03982fd312e0e52382bc5cfd66b174c862d0e",
+  "diagnostics": "C:\\Users\\gh0st\\Documents\\RomeroGan\\romeroDSL\\reports\\phase7_gemma_controlled_tokenization.json",
+  "diagnostic_max_length": 2500,
+  "records_before": 3532,
+  "records_after": 3519,
+  "excluded_long_records": 13,
+  "excluded_indices": [
+    10,
+    482,
+    492,
+    910,
+    1273,
+    1459,
+    1560,
+    1645,
+    1866,
+    1885,
+    2440,
+    2918,
+    3105
+  ],
+  "output": "C:\\Users\\gh0st\\Documents\\RomeroGan\\romeroDSL\\build\\phase7_gemma_sft\\romerodsl_sft_gemma_phase7_train_safe_2500.jsonl",
+  "output_sha256": "9081690ae5ee99724001009e20ba81c18b2efa1c910a5354039cc5ed7543ca50",
+  "heldout_long": "C:\\Users\\gh0st\\Documents\\RomeroGan\\romeroDSL\\build\\phase7_gemma_sft\\romerodsl_sft_gemma_phase7_long_expert_heldout.jsonl",
+  "heldout_long_sha256": "b0cb3f6da4b85ef480893e0c7d71898306030bfd4b3c8c89cc4255e51408b5d5",
+  "policy": "Do not truncate complete JSON targets; train the 2500-token-safe subset and reserve long expert records for a separately approved context or staged-generation experiment."
+}

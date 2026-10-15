@@ -250,12 +250,24 @@ def build_tokenization_diagnostics(
     }
 
 
+def _sha256_file(path: Path) -> str | None:
+    path = Path(path)
+    if not path.is_file():
+        return None
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def training_run_plan(config: SFTTrainConfig) -> dict[str, Any]:
     """Return a dependency-free description of what a training run will produce."""
 
     return {
         "base_model": config.model_name,
         "sft_jsonl": str(config.sft_jsonl).replace("\\", "/"),
+        "sft_jsonl_sha256": _sha256_file(config.sft_jsonl),
         "output_dir": str(config.output_dir).replace("\\", "/"),
         "max_length": config.max_length,
         "overlength_policy": config.overlength_policy,
@@ -289,6 +301,18 @@ def train_qwen_lora(config: SFTTrainConfig) -> dict[str, Any]:
     from torch.nn.utils.rnn import pad_sequence
     from torch.utils.data import DataLoader
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, get_cosine_schedule_with_warmup
+
+    def memory_snapshot() -> dict[str, Any]:
+        if not torch.cuda.is_available():
+            return {"cuda": False}
+        return {
+            "cuda": True,
+            "device": torch.cuda.get_device_name(0),
+            "allocated_bytes": torch.cuda.memory_allocated(),
+            "reserved_bytes": torch.cuda.memory_reserved(),
+            "max_allocated_bytes": torch.cuda.max_memory_allocated(),
+            "max_reserved_bytes": torch.cuda.max_memory_reserved(),
+        }
 
     if config.overlength_policy not in {"reject", "preserve_target"}:
         raise ValueError("overlength_policy must be 'reject' or 'preserve_target'")
@@ -384,6 +408,8 @@ def train_qwen_lora(config: SFTTrainConfig) -> dict[str, Any]:
     scaler = None
     global_step = 0
     running_loss = 0.0
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
     metrics: dict[str, Any] = {
         "plan": training_run_plan(config),
         "records": len(records),
@@ -392,6 +418,7 @@ def train_qwen_lora(config: SFTTrainConfig) -> dict[str, Any]:
         "test_records": len(splits.get("test", [])),
         "split_report": split_group_report(splits),
         "tokenization": tokenization,
+        "memory": {"initial": memory_snapshot(), "steps": []},
         "steps": [],
     }
 
@@ -416,7 +443,9 @@ def train_qwen_lora(config: SFTTrainConfig) -> dict[str, Any]:
                     "step": global_step,
                     "train_loss": running_loss,
                     "learning_rate": scheduler.get_last_lr()[0],
+                    "memory": memory_snapshot(),
                 }
+                metrics["memory"]["steps"].append(step_metrics["memory"])
                 running_loss = 0.0
                 if val_loader is not None and global_step % config.eval_every_steps == 0:
                     step_metrics["validation_loss"] = _evaluate_loss(model, val_loader, device)
@@ -433,6 +462,7 @@ def train_qwen_lora(config: SFTTrainConfig) -> dict[str, Any]:
     model.save_pretrained(adapter_dir)
     tokenizer.save_pretrained(adapter_dir)
     metrics["adapter_dir"] = str(adapter_dir)
+    metrics["memory"]["final"] = memory_snapshot()
     _write_metrics(config.output_dir, metrics)
     return metrics
 
@@ -521,5 +551,6 @@ def _write_metrics(output_dir: Path, metrics: dict[str, Any]) -> None:
 def _jsonable_config(config: SFTTrainConfig) -> dict[str, Any]:
     value = asdict(config)
     value["sft_jsonl"] = str(config.sft_jsonl)
+    value["sft_jsonl_sha256"] = _sha256_file(config.sft_jsonl)
     value["output_dir"] = str(config.output_dir)
     return value

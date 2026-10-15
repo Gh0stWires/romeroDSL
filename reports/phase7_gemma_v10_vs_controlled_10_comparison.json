@@ -1,0 +1,331 @@
+{
+  "benchmark_version": "phase6_no_repair_v1",
+  "delta_overall": {
+    "correct_key_lock_behavior": 0,
+    "correct_room_count": 0,
+    "dsl_schema_valid": 0,
+    "exact_prompt_constraints_satisfied": 0,
+    "first_pass_success": 0,
+    "geometry_compilation_success": 0,
+    "json_parse_success": 17,
+    "valid_progression_and_connectivity": 0,
+    "wad_export_valid": 0
+  },
+  "new": {
+    "overall": {
+      "architecture_metrics_available": 0,
+      "cases": 32,
+      "failure_categories": {
+        "incorrect_progression": 20,
+        "missing_required_field": 20,
+        "syntax_failure": 12,
+        "unsupported_feature": 20
+      },
+      "first_pass_success_rate": 0.0,
+      "mean_diversity_score": null,
+      "mean_generated_space_count": null,
+      "mean_nearest_template_similarity": null,
+      "pass_counts": {
+        "correct_key_lock_behavior": 0,
+        "correct_room_count": 0,
+        "dsl_schema_valid": 0,
+        "exact_prompt_constraints_satisfied": 0,
+        "first_pass_success": 0,
+        "geometry_compilation_success": 0,
+        "json_parse_success": 20,
+        "valid_progression_and_connectivity": 0,
+        "wad_export_valid": 0
+      },
+      "template_metrics_available": 0
+    },
+    "tiers": {
+      "advanced": {
+        "architecture_metrics_available": 0,
+        "cases": 8,
+        "failure_categories": {
+          "incorrect_progression": 6,
+          "missing_required_field": 6,
+          "syntax_failure": 2,
+          "unsupported_feature": 6
+        },
+        "first_pass_success_rate": 0.0,
+        "mean_diversity_score": null,
+        "mean_generated_space_count": null,
+        "mean_nearest_template_similarity": null,
+        "pass_counts": {
+          "correct_key_lock_behavior": 0,
+          "correct_room_count": 0,
+          "dsl_schema_valid": 0,
+          "exact_prompt_constraints_satisfied": 0,
+          "first_pass_success": 0,
+          "geometry_compilation_success": 0,
+          "json_parse_success": 6,
+          "valid_progression_and_connectivity": 0,
+          "wad_export_valid": 0
+        },
+        "template_metrics_available": 0
+      },
+      "basic": {
+        "architecture_metrics_available": 0,
+        "cases": 8,
+        "failure_categories": {
+          "incorrect_progression": 4,
+          "missing_required_field": 4,
+          "syntax_failure": 4,
+          "unsupported_feature": 4
+        },
+        "first_pass_success_rate": 0.0,
+        "mean_diversity_score": null,
+        "mean_generated_space_count": null,
+        "mean_nearest_template_similarity": null,
+        "pass_counts": {
+          "correct_key_lock_behavior": 0,
+          "correct_room_count": 0,
+          "dsl_schema_valid": 0,
+          "exact_prompt_constraints_satisfied": 0,
+          "first_pass_success": 0,
+          "geometry_compilation_success": 0,
+          "json_parse_success": 4,
+          "valid_progression_and_connectivity": 0,
+          "wad_export_valid": 0
+        },
+        "template_metrics_available": 0
+      },
+      "expert": {
+        "architecture_metrics_available": 0,
+        "cases": 8,
+        "failure_categories": {
+          "incorrect_progression": 5,
+          "missing_required_field": 5,
+          "syntax_failure": 3,
+          "unsupported_feature": 5
+        },
+        "first_pass_success_rate": 0.0,
+        "mean_diversity_score": null,
+        "mean_generated_space_count": null,
+        "mean_nearest_template_similarity": null,
+        "pass_counts": {
+          "correct_key_lock_behavior": 0,
+          "correct_room_count": 0,
+          "dsl_schema_valid": 0,
+          "exact_prompt_constraints_satisfied": 0,
+          "first_pass_success": 0,
+          "geometry_compilation_success": 0,
+          "json_parse_success": 5,
+          "valid_progression_and_connectivity": 0,
+          "wad_export_valid": 0
+        },
+        "template_metrics_available": 0
+      },
+      "intermediate": {
+        "architecture_metrics_available": 0,
+        "cases": 8,
+        "failure_categories": {
+          "incorrect_progression": 5,
+          "missing_required_field": 5,
+          "syntax_failure": 3,
+          "unsupported_feature": 5
+        },
+        "first_pass_success_rate": 0.0,
+        "mean_diversity_score": null,
+        "mean_generated_space_count": null,
+        "mean_nearest_template_similarity": null,
+        "pass_counts": {
+          "correct_key_lock_behavior": 0,
+          "correct_room_count": 0,
+          "dsl_schema_valid": 0,
+          "exact_prompt_constraints_satisfied": 0,
+          "first_pass_success": 0,
+          "geometry_compilation_success": 0,
+          "json_parse_success": 5,
+          "valid_progression_and_connectivity": 0,
+          "wad_export_valid": 0
+        },
+        "template_metrics_available": 0
+      }
+    }
+  },
+  "new_report": "C:\\Users\\gh0st\\Documents\\RomeroGan\\romeroDSL\\build\\phase7_new_gemma_controlled_10_smallval\\benchmark_report.json",
+  "new_run_metadata": {
+    "adapter": "C:\\Users\\gh0st\\Documents\\RomeroGan\\romeroDSL\\runs\\phase7_gemma_controlled_10_smallval\\adapter",
+    "adapter_sha256": "4e4d87bb45c9c8ad615b5820d9c60b60620764256b589ba482f9ef4f8b1e397f",
+    "base_model": "google/gemma-4-E4B-it",
+    "cuda_available": true,
+    "cuda_device": "NVIDIA GeForce RTX 4070",
+    "do_sample": false,
+    "evaluation_mode": "strict_no_repair",
+    "generation_memory": {
+      "cases": 32,
+      "elapsed_seconds": 21531.88389270054,
+      "max_cuda_allocated_bytes": 9490458624,
+      "max_cuda_reserved_bytes": 9569304576
+    },
+    "max_new_tokens": 2500,
+    "system_prompt": "You generate valid romeroDSL JSON for Doom II maps. Return only one JSON object. Do not wrap it in markdown. The JSON must pass the romerodsl validator and must preserve requested keys, locks, progression, theme, combat, resources, materials, and height topology. Do not include source WAD provenance metadata or long source height arrays.",
+    "template_count": 128,
+    "template_dataset": "C:\\Users\\gh0st\\Documents\\RomeroGan\\romeroDSL\\build\\v11_gemma_sft\\romerodsl_sft_gemma_light_real_wad_only.jsonl",
+    "template_dataset_sha256": "fdddf0f8ae0b5c4222fbe62d7c7b7ad1d075402744966cbf83826d99a525940d",
+    "torch_version": "2.9.1+cu128"
+  },
+  "prior": {
+    "overall": {
+      "architecture_metrics_available": 0,
+      "cases": 32,
+      "failure_categories": {
+        "incorrect_progression": 3,
+        "invalid_material": 1,
+        "missing_required_field": 3,
+        "syntax_failure": 29,
+        "unsupported_feature": 3
+      },
+      "first_pass_success_rate": 0.0,
+      "mean_diversity_score": null,
+      "mean_generated_space_count": null,
+      "mean_nearest_template_similarity": null,
+      "pass_counts": {
+        "correct_key_lock_behavior": 0,
+        "correct_room_count": 0,
+        "dsl_schema_valid": 0,
+        "exact_prompt_constraints_satisfied": 0,
+        "first_pass_success": 0,
+        "geometry_compilation_success": 0,
+        "json_parse_success": 3,
+        "valid_progression_and_connectivity": 0,
+        "wad_export_valid": 0
+      },
+      "template_metrics_available": 0
+    },
+    "tiers": {
+      "advanced": {
+        "architecture_metrics_available": 0,
+        "cases": 8,
+        "failure_categories": {
+          "incorrect_progression": 1,
+          "missing_required_field": 1,
+          "syntax_failure": 7,
+          "unsupported_feature": 1
+        },
+        "first_pass_success_rate": 0.0,
+        "mean_diversity_score": null,
+        "mean_generated_space_count": null,
+        "mean_nearest_template_similarity": null,
+        "pass_counts": {
+          "correct_key_lock_behavior": 0,
+          "correct_room_count": 0,
+          "dsl_schema_valid": 0,
+          "exact_prompt_constraints_satisfied": 0,
+          "first_pass_success": 0,
+          "geometry_compilation_success": 0,
+          "json_parse_success": 1,
+          "valid_progression_and_connectivity": 0,
+          "wad_export_valid": 0
+        },
+        "template_metrics_available": 0
+      },
+      "basic": {
+        "architecture_metrics_available": 0,
+        "cases": 8,
+        "failure_categories": {
+          "incorrect_progression": 1,
+          "invalid_material": 1,
+          "missing_required_field": 1,
+          "syntax_failure": 7,
+          "unsupported_feature": 1
+        },
+        "first_pass_success_rate": 0.0,
+        "mean_diversity_score": null,
+        "mean_generated_space_count": null,
+        "mean_nearest_template_similarity": null,
+        "pass_counts": {
+          "correct_key_lock_behavior": 0,
+          "correct_room_count": 0,
+          "dsl_schema_valid": 0,
+          "exact_prompt_constraints_satisfied": 0,
+          "first_pass_success": 0,
+          "geometry_compilation_success": 0,
+          "json_parse_success": 1,
+          "valid_progression_and_connectivity": 0,
+          "wad_export_valid": 0
+        },
+        "template_metrics_available": 0
+      },
+      "expert": {
+        "architecture_metrics_available": 0,
+        "cases": 8,
+        "failure_categories": {
+          "incorrect_progression": 1,
+          "missing_required_field": 1,
+          "syntax_failure": 7,
+          "unsupported_feature": 1
+        },
+        "first_pass_success_rate": 0.0,
+        "mean_diversity_score": null,
+        "mean_generated_space_count": null,
+        "mean_nearest_template_similarity": null,
+        "pass_counts": {
+          "correct_key_lock_behavior": 0,
+          "correct_room_count": 0,
+          "dsl_schema_valid": 0,
+          "exact_prompt_constraints_satisfied": 0,
+          "first_pass_success": 0,
+          "geometry_compilation_success": 0,
+          "json_parse_success": 1,
+          "valid_progression_and_connectivity": 0,
+          "wad_export_valid": 0
+        },
+        "template_metrics_available": 0
+      },
+      "intermediate": {
+        "architecture_metrics_available": 0,
+        "cases": 8,
+        "failure_categories": {
+          "syntax_failure": 8
+        },
+        "first_pass_success_rate": 0.0,
+        "mean_diversity_score": null,
+        "mean_generated_space_count": null,
+        "mean_nearest_template_similarity": null,
+        "pass_counts": {
+          "correct_key_lock_behavior": 0,
+          "correct_room_count": 0,
+          "dsl_schema_valid": 0,
+          "exact_prompt_constraints_satisfied": 0,
+          "first_pass_success": 0,
+          "geometry_compilation_success": 0,
+          "json_parse_success": 0,
+          "valid_progression_and_connectivity": 0,
+          "wad_export_valid": 0
+        },
+        "template_metrics_available": 0
+      }
+    }
+  },
+  "prior_report": "C:\\Users\\gh0st\\Documents\\RomeroGan\\romeroDSL\\build\\phase7_baseline_gemma_v10_complete\\benchmark_report.json",
+  "prior_run_metadata": {
+    "adapter": "C:\\Users\\gh0st\\Documents\\RomeroGan\\romeroDSL\\runs\\gemma4_e4b_v10_light_clean\\adapter",
+    "adapter_sha256": "afe49c454b6aa1cfa4dc974e1b38d35eeaa23a2c83780fa4e3e16662d9db4b33",
+    "base_model": "google/gemma-4-E4B-it",
+    "benchmark_version": "phase6_no_repair_v1",
+    "cuda_available": true,
+    "cuda_device": "NVIDIA GeForce RTX 4070",
+    "do_sample": false,
+    "evaluation_mode": "strict_no_repair",
+    "generation_memory": {
+      "cases": 7,
+      "elapsed_seconds": 2617.7782061006874,
+      "max_cuda_allocated_bytes": 9460814848,
+      "max_cuda_reserved_bytes": 9569304576
+    },
+    "max_new_tokens": 2500,
+    "resumed": true,
+    "source_roots": [
+      "C:\\Users\\gh0st\\Documents\\RomeroGan\\romeroDSL\\build\\phase7_baseline_gemma_v10",
+      "C:\\Users\\gh0st\\Documents\\RomeroGan\\romeroDSL\\build\\phase7_baseline_gemma_v10_remaining_v2"
+    ],
+    "system_prompt": "You generate valid romeroDSL JSON for Doom II maps. Return only one JSON object. Do not wrap it in markdown. The JSON must pass the romerodsl validator and must preserve requested keys, locks, progression, theme, combat, resources, materials, and height topology. Do not include source WAD provenance metadata or long source height arrays.",
+    "template_count": 128,
+    "template_dataset": "C:\\Users\\gh0st\\Documents\\RomeroGan\\romeroDSL\\build\\v11_gemma_sft\\romerodsl_sft_gemma_light_real_wad_only.jsonl",
+    "template_dataset_sha256": "fdddf0f8ae0b5c4222fbe62d7c7b7ad1d075402744966cbf83826d99a525940d",
+    "torch_version": "2.9.1+cu128"
+  }
+}
