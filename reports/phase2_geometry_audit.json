@@ -1,0 +1,229 @@
+{
+  "report": "phase2_geometry_audit",
+  "source_example": "examples/blue_lock_processing.json",
+  "shapes": [
+    {
+      "shape": "rectangle_with_side_alcoves",
+      "wad": "C:\\Users\\gh0st\\Documents\\RomeroGan\\romeroDSL\\build\\phase2_geometry_gallery\\rectangle_with_side_alcoves.wad",
+      "valid": true,
+      "room_sectors": 7,
+      "corridor_sectors": 8,
+      "door_sectors": 2,
+      "height_feature_sectors": 10,
+      "vertices": 138,
+      "linedefs": 150,
+      "sectors": 27,
+      "boundary_points": [
+        [
+          2176,
+          -784
+        ],
+        [
+          2282,
+          -784
+        ],
+        [
+          2282,
+          -624
+        ],
+        [
+          2176,
+          -624
+        ],
+        [
+          2176,
+          -384
+        ],
+        [
+          2816,
+          -384
+        ],
+        [
+          2816,
+          -624
+        ],
+        [
+          2710,
+          -624
+        ],
+        [
+          2710,
+          -784
+        ],
+        [
+          2816,
+          -784
+        ],
+        [
+          2816,
+          -1024
+        ],
+        [
+          2176,
+          -1024
+        ]
+      ],
+      "wad_validation_errors": []
+    },
+    {
+      "shape": "closet",
+      "wad": "C:\\Users\\gh0st\\Documents\\RomeroGan\\romeroDSL\\build\\phase2_geometry_gallery\\closet.wad",
+      "valid": true,
+      "room_sectors": 7,
+      "corridor_sectors": 8,
+      "door_sectors": 2,
+      "height_feature_sectors": 10,
+      "vertices": 124,
+      "linedefs": 142,
+      "sectors": 27,
+      "boundary_points": [
+        [
+          2176,
+          -597
+        ],
+        [
+          2336,
+          -597
+        ],
+        [
+          2336,
+          -384
+        ],
+        [
+          2656,
+          -384
+        ],
+        [
+          2656,
+          -597
+        ],
+        [
+          2816,
+          -597
+        ],
+        [
+          2816,
+          -1024
+        ],
+        [
+          2176,
+          -1024
+        ]
+      ],
+      "wad_validation_errors": []
+    },
+    {
+      "shape": "bent_corridor",
+      "wad": "C:\\Users\\gh0st\\Documents\\RomeroGan\\romeroDSL\\build\\phase2_geometry_gallery\\bent_corridor.wad",
+      "valid": true,
+      "room_sectors": 7,
+      "corridor_sectors": 8,
+      "door_sectors": 2,
+      "height_feature_sectors": 10,
+      "vertices": 123,
+      "linedefs": 140,
+      "sectors": 27,
+      "boundary_points": [
+        [
+          2176,
+          -464
+        ],
+        [
+          2256,
+          -384
+        ],
+        [
+          2656,
+          -384
+        ],
+        [
+          2816,
+          -944
+        ],
+        [
+          2736,
+          -1024
+        ],
+        [
+          2336,
+          -1024
+        ],
+        [
+          2176,
+          -864
+        ]
+      ],
+      "wad_validation_errors": []
+    },
+    {
+      "shape": "narrow_hall_with_cover",
+      "wad": "C:\\Users\\gh0st\\Documents\\RomeroGan\\romeroDSL\\build\\phase2_geometry_gallery\\narrow_hall_with_cover.wad",
+      "valid": true,
+      "room_sectors": 7,
+      "corridor_sectors": 8,
+      "door_sectors": 2,
+      "height_feature_sectors": 12,
+      "vertices": 136,
+      "linedefs": 154,
+      "sectors": 29,
+      "boundary_points": [
+        [
+          2176,
+          -624
+        ],
+        [
+          2304,
+          -624
+        ],
+        [
+          2304,
+          -384
+        ],
+        [
+          2688,
+          -384
+        ],
+        [
+          2688,
+          -624
+        ],
+        [
+          2816,
+          -624
+        ],
+        [
+          2816,
+          -784
+        ],
+        [
+          2688,
+          -784
+        ],
+        [
+          2688,
+          -1024
+        ],
+        [
+          2304,
+          -1024
+        ],
+        [
+          2304,
+          -784
+        ],
+        [
+          2176,
+          -784
+        ]
+      ],
+      "wad_validation_errors": []
+    }
+  ],
+  "distinct_boundary_count": 4,
+  "notes": [
+    "rectangle_with_side_alcoves uses a convex primary footprint plus two recessed side-alcove sectors so all boundary winding remains engine-safe.",
+    "bent_corridor uses an asymmetric multi-turn footprint with a deterministic portal fallback for non-overlapping openings.",
+    "narrow_hall_with_cover emits two low-cover sectors when no explicit height features are supplied.",
+    "Unknown shapes continue to fail schema/compiler validation rather than falling back to rectangles."
+  ]
+}

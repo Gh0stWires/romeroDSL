@@ -293,7 +293,7 @@ class SchemaTests(unittest.TestCase):
 
         self.assertEqual(report["room_sectors"], 7)
         self.assertEqual(report["door_sectors"], 2)
-        self.assertEqual(report["height_feature_sectors"], 8)
+        self.assertEqual(report["height_feature_sectors"], 12)
         self.assertLess(report["sectors"], 60)
         self.assertIn(-24, report["floor_height_levels"])
         self.assertIn(32, report["floor_height_levels"])

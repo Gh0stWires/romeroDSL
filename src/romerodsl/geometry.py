@@ -494,6 +494,26 @@ def _connection_portals(
         source_opening = _opening_at_axis(source_opening, aligned)
         target_opening = _opening_at_axis(target_opening, aligned)
         source_axis = target_axis = aligned
+    else:
+        # When openings do not overlap, keep the L-shaped route attached to
+        # the nearest valid edge of each portal. Leaving both axes at their
+        # independent centers makes the corridor side run through the room
+        # boundary instead of through the declared doorway opening.
+        portal_width = min(width, 64)
+        target_half = max(1, portal_width // 2)
+        target_axis = max(
+            target_opening.start + target_half,
+            min(target_opening.end - target_half, source_axis),
+        )
+        source_half = max(1, portal_width // 2)
+        source_axis = max(
+            source_opening.start + source_half,
+            min(source_opening.end - source_half, target_axis),
+        )
+        source_opening = _opening_at_axis(source_opening, source_axis, portal_width)
+        target_opening = _opening_at_axis(target_opening, target_axis, portal_width)
+        source_axis = _opening_axis(source_opening)
+        target_axis = _opening_axis(target_opening)
 
     if source_side in {"left", "right"}:
         source_point = (source[0] if source_side == "left" else source[2], source_axis)
@@ -523,8 +543,9 @@ def _opening_for_shape(
     return Opening(side=side, start=center - half, end=center + half)
 
 
-def _opening_at_axis(opening: Opening, axis: int) -> Opening:
-    half = (opening.end - opening.start) // 2
+def _opening_at_axis(opening: Opening, axis: int, width: int | None = None) -> Opening:
+    span = opening.end - opening.start
+    half = max(1, (min(span, width) if width is not None else span) // 2)
     center = max(opening.start + half, min(opening.end - half, axis))
     return Opening(opening.side, center - half, center + half)
 
@@ -606,6 +627,14 @@ def _boundary_side(start: Point, end: Point, rect: Rect) -> Side | None:
     return None
 
 
+def _clockwise(points: list[Point]) -> list[Point]:
+    area = sum(
+        start[0] * end[1] - end[0] * start[1]
+        for start, end in zip(points, points[1:] + points[:1], strict=True)
+    )
+    return list(reversed(points)) if area > 0 else points
+
+
 def _canonical_room_boundary_points(rect: Rect, shape: str) -> list[Point]:
     x1, y1, x2, y2 = rect
     canonical = canonical_room_shape(shape)
@@ -613,18 +642,66 @@ def _canonical_room_boundary_points(rect: Rect, shape: str) -> list[Point]:
         raise ValueError(f"unsupported room shape {shape!r}")
     if canonical in {"rectangle", "raised_center", "depressed_floor"}:
         return [(x1, y1), (x1, y2), (x2, y2), (x2, y1)]
-    if canonical in {"rectangle_with_side_alcoves", "closet", "bent_corridor", "narrow_hall_with_cover"}:
-        chamfer = min(128, max(64, min(x2 - x1, y2 - y1) // 8))
-        return [
-            (x1, y1 + chamfer),
-            (x1, y2 - chamfer),
-            (x1 + chamfer, y2),
-            (x2 - chamfer, y2),
-            (x2, y2 - chamfer),
-            (x2, y1 + chamfer),
-            (x2 - chamfer, y1),
-            (x1 + chamfer, y1),
-        ]
+    if canonical == "rectangle_with_side_alcoves":
+        bevel = min(128, max(64, min(x2 - x1, y2 - y1) // 8))
+        side_bevel = min(192, bevel + 32)
+        return _clockwise([
+            (x1, y1 + bevel),
+            (x1, y2 - bevel),
+            (x1 + bevel, y2),
+            (x2 - side_bevel, y2),
+            (x2, y2 - side_bevel),
+            (x2, y1 + side_bevel),
+            (x2 - side_bevel, y1),
+            (x1 + bevel, y1),
+        ])
+    if canonical == "closet":
+        closet_depth = min(256, max(160, (y2 - y1) // 3))
+        closet_width = min(320, max(192, (x2 - x1) // 2))
+        center = (x1 + x2) // 2
+        neck_left = center - closet_width // 2
+        neck_right = center + closet_width // 2
+        body_top = y2 - closet_depth
+        return _clockwise([
+            (x1, y1),
+            (x2, y1),
+            (x2, body_top),
+            (neck_right, body_top),
+            (neck_right, y2),
+            (neck_left, y2),
+            (neck_left, body_top),
+            (x1, body_top),
+        ])
+    if canonical == "bent_corridor":
+        bend = min(256, max(128, (y2 - y1) // 4))
+        return _clockwise([
+            (x1, y1 + bend),
+            (x1 + bend, y1),
+            (x2 - bend // 2, y1),
+            (x2, y1 + bend // 2),
+            (x2 - bend, y2),
+            (x1 + bend // 2, y2),
+            (x1, y2 - bend // 2),
+        ])
+    if canonical == "narrow_hall_with_cover":
+        half_width = min(128, max(64, (y2 - y1) // 8))
+        center = (y1 + y2) // 2
+        low, high = center - half_width, center + half_width
+        bay = min(192, max(128, (x2 - x1) // 6))
+        return _clockwise([
+            (x1, low),
+            (x1 + bay, low),
+            (x1 + bay, y1),
+            (x2 - bay, y1),
+            (x2 - bay, low),
+            (x2, low),
+            (x2, high),
+            (x2 - bay, high),
+            (x2 - bay, y2),
+            (x1 + bay, y2),
+            (x1 + bay, high),
+            (x1, high),
+        ])
     if canonical == "l_shaped":
         notch_width = max(192, (x2 - x1) // 3)
         notch_depth = max(192, (y2 - y1) // 3)
@@ -1001,6 +1078,16 @@ def _add_height_features(
                 "placement": "central",
             }
         )
+    elif not features and shape == "rectangle_with_side_alcoves":
+        features = [
+            {"type": "side_alcove", "placement": "west_alcove"},
+            {"type": "side_alcove", "placement": "east_alcove"},
+        ]
+    elif not features and shape == "narrow_hall_with_cover":
+        features = [
+            {"type": "cover_block", "placement": "west_cover"},
+            {"type": "cover_block", "placement": "east_cover"},
+        ]
     count = 0
     base = int(space.get("floor_height", 0))
     ceiling = int(space.get("ceiling_height", base + 128))
@@ -1019,6 +1106,42 @@ def _add_height_features(
                 )
                 builder.add_inner_rect(pillar_rect, sector, parent_sector, texture=materials["lower_wall"])
                 count += 1
+        elif feature_type == "side_alcove":
+            x1, y1, x2, y2 = rect
+            alcove_width = min(192, max(128, (x2 - x1) // 6))
+            alcove_height = min(256, max(160, (y2 - y1) // 3))
+            center_y = (y1 + y2) // 2
+            if feature.get("placement") == "east_alcove":
+                alcove_rect = (x2 - alcove_width - 96, center_y - alcove_height // 2, x2 - 96, center_y + alcove_height // 2)
+            else:
+                alcove_rect = (x1 + 96, center_y - alcove_height // 2, x1 + alcove_width + 96, center_y + alcove_height // 2)
+            sector = builder.add_sector(
+                floor=base,
+                ceiling=max(base + 96, ceiling - 32),
+                texturefloor=materials["floor"],
+                textureceiling=materials["ceiling"],
+            )
+            builder.add_inner_rect(alcove_rect, sector, parent_sector, texture=materials["lower_wall"])
+            count += 1
+        elif feature_type == "cover_block":
+            cx, cy = _center(rect)
+            cover_width = 96
+            cover_height = 96
+            cover_x = cx + (-192 if index % 2 == 0 else 192)
+            cover_rect = (
+                cover_x - cover_width // 2,
+                cy - cover_height // 2,
+                cover_x + cover_width // 2,
+                cy + cover_height // 2,
+            )
+            sector = builder.add_sector(
+                floor=base,
+                ceiling=min(ceiling, base + 64),
+                texturefloor=materials["floor"],
+                textureceiling=materials["ceiling"],
+            )
+            builder.add_inner_rect(cover_rect, sector, parent_sector, texture=materials["lower_wall"])
+            count += 1
         elif feature_type in {"raised_platform", "platform"}:
             platform_floor = int(feature.get("floor_height", base + 32))
             feature_rect = _feature_rect(rect, "north", index)
@@ -1282,6 +1405,11 @@ def _blocking_feature_rects(space: dict[str, Any], rect: Rect) -> list[Rect]:
     shape = canonical_room_shape(space.get("shape", "rectangle"))
     if not features and shape in {"raised_center", "depressed_floor"}:
         features.append({"type": shape, "placement": "central", "blocks_movement": False})
+    elif not features and shape == "narrow_hall_with_cover":
+        features = [
+            {"type": "cover_block", "placement": "west_cover", "blocks_movement": True},
+            {"type": "cover_block", "placement": "east_cover", "blocks_movement": True},
+        ]
     blocked: list[Rect] = []
     for index, feature in enumerate(features):
         if not isinstance(feature, dict):
@@ -1292,6 +1420,10 @@ def _blocking_feature_rects(space: dict[str, Any], rect: Rect) -> list[Rect]:
             ceiling = int(feature.get("ceiling_height", space.get("ceiling_height", 128)))
             if bool(feature.get("blocks_movement", floor >= ceiling)):
                 blocked.extend(_pillar_rects(rect, int(feature.get("count", 1))))
+        elif feature_type == "cover_block":
+            cx, cy = _center(rect)
+            cover_x = cx + (-192 if index % 2 == 0 else 192)
+            blocked.append((cover_x - 48, cy - 48, cover_x + 48, cy + 48))
         elif bool(feature.get("blocks_movement", False)):
             if feature_type in {"raised_platform", "platform"}:
                 blocked.append(_feature_rect(rect, "north", index))

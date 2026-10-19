@@ -59,6 +59,28 @@ class GeometryShapeTests(unittest.TestCase):
 
         self.assertGreaterEqual(len(textmaps), 5)
 
+    def test_phase2_shapes_have_distinct_physical_boundaries(self) -> None:
+        shapes = (
+            "rectangle_with_side_alcoves",
+            "closet",
+            "bent_corridor",
+            "narrow_hall_with_cover",
+        )
+        signatures = {
+            shape: tuple(_room_boundary_points((0, 0, 1024, 1024), shape))
+            for shape in shapes
+        }
+        self.assertEqual(len(set(signatures.values())), len(shapes))
+        self.assertNotEqual(len(signatures["closet"]), len(signatures["bent_corridor"]))
+
+    def test_narrow_hall_with_cover_emits_cover_geometry(self) -> None:
+        document = copy.deepcopy(self.source)
+        document["spaces"][1]["shape"] = "narrow_hall_with_cover"
+        document["spaces"][1]["height_topology"] = {"features": []}
+        with tempfile.TemporaryDirectory() as temporary:
+            report = compile_to_wad(document, Path(temporary) / "cover.wad")
+        self.assertGreaterEqual(report["height_feature_sectors"], 2)
+
     def test_height_shapes_emit_a_central_feature_sector(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             for shape, expected_delta in (("raised_center", 32), ("depressed_floor", -24)):
