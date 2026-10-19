@@ -1,0 +1,583 @@
+{
+  "schema": "romerodsl_phase6_topology_diversity_v1",
+  "records": 100,
+  "fully_validated": true,
+  "engine_tested": false,
+  "tier_counts": {
+    "basic": 25,
+    "intermediate": 25,
+    "advanced": 25,
+    "expert": 25
+  },
+  "topology_family_counts": {
+    "hub_and_spoke": 21,
+    "gated_nonlinear": 19,
+    "asymmetric_exploration": 18,
+    "figure_eight": 24,
+    "nested_loops": 11,
+    "interconnected_clusters": 7
+  },
+  "shape_counts": {
+    "closet": 76,
+    "inset_chamber": 73,
+    "rectangle": 91,
+    "rectangle_with_side_alcoves": 71,
+    "t_shaped": 69,
+    "bent_corridor": 74,
+    "l_shaped": 71,
+    "irregular_octagonal": 74,
+    "depressed_floor": 73,
+    "raised_center": 72,
+    "irregular_orthogonal": 72
+  },
+  "unique_graph_signatures": 93,
+  "duplicate_graph_signatures": 7,
+  "graph_signature_examples": [
+    {
+      "signature": [
+        3,
+        0,
+        0,
+        0,
+        [
+          "closet",
+          "irregular_octagonal",
+          "rectangle"
+        ]
+      ],
+      "count": 2
+    },
+    {
+      "signature": [
+        11,
+        4,
+        2,
+        0,
+        [
+          "bent_corridor",
+          "closet",
+          "depressed_floor",
+          "inset_chamber",
+          "irregular_octagonal",
+          "irregular_orthogonal",
+          "l_shaped",
+          "raised_center",
+          "rectangle",
+          "rectangle_with_side_alcoves",
+          "t_shaped"
+        ]
+      ],
+      "count": 2
+    },
+    {
+      "signature": [
+        12,
+        4,
+        2,
+        0,
+        [
+          "bent_corridor",
+          "closet",
+          "depressed_floor",
+          "inset_chamber",
+          "irregular_octagonal",
+          "irregular_orthogonal",
+          "l_shaped",
+          "raised_center",
+          "rectangle",
+          "rectangle_with_side_alcoves",
+          "t_shaped"
+        ]
+      ],
+      "count": 2
+    },
+    {
+      "signature": [
+        14,
+        4,
+        4,
+        0,
+        [
+          "bent_corridor",
+          "closet",
+          "depressed_floor",
+          "inset_chamber",
+          "irregular_octagonal",
+          "irregular_orthogonal",
+          "l_shaped",
+          "raised_center",
+          "rectangle",
+          "rectangle_with_side_alcoves",
+          "t_shaped"
+        ]
+      ],
+      "count": 2
+    },
+    {
+      "signature": [
+        22,
+        6,
+        6,
+        0,
+        [
+          "bent_corridor",
+          "closet",
+          "depressed_floor",
+          "inset_chamber",
+          "irregular_octagonal",
+          "irregular_orthogonal",
+          "l_shaped",
+          "raised_center",
+          "rectangle",
+          "rectangle_with_side_alcoves",
+          "t_shaped"
+        ]
+      ],
+      "count": 2
+    },
+    {
+      "signature": [
+        23,
+        8,
+        5,
+        0,
+        [
+          "bent_corridor",
+          "closet",
+          "depressed_floor",
+          "inset_chamber",
+          "irregular_octagonal",
+          "irregular_orthogonal",
+          "l_shaped",
+          "raised_center",
+          "rectangle",
+          "rectangle_with_side_alcoves",
+          "t_shaped"
+        ]
+      ],
+      "count": 2
+    },
+    {
+      "signature": [
+        22,
+        10,
+        6,
+        0,
+        [
+          "bent_corridor",
+          "closet",
+          "depressed_floor",
+          "inset_chamber",
+          "irregular_octagonal",
+          "irregular_orthogonal",
+          "l_shaped",
+          "raised_center",
+          "rectangle",
+          "rectangle_with_side_alcoves",
+          "t_shaped"
+        ]
+      ],
+      "count": 2
+    },
+    {
+      "signature": [
+        5,
+        0,
+        0,
+        0,
+        [
+          "closet",
+          "inset_chamber",
+          "rectangle",
+          "rectangle_with_side_alcoves",
+          "t_shaped"
+        ]
+      ],
+      "count": 1
+    },
+    {
+      "signature": [
+        4,
+        1,
+        1,
+        0,
+        [
+          "bent_corridor",
+          "l_shaped",
+          "rectangle"
+        ]
+      ],
+      "count": 1
+    },
+    {
+      "signature": [
+        4,
+        2,
+        1,
+        0,
+        [
+          "bent_corridor",
+          "depressed_floor",
+          "rectangle"
+        ]
+      ],
+      "count": 1
+    },
+    {
+      "signature": [
+        3,
+        1,
+        1,
+        0,
+        [
+          "irregular_octagonal",
+          "raised_center",
+          "rectangle"
+        ]
+      ],
+      "count": 1
+    },
+    {
+      "signature": [
+        4,
+        1,
+        2,
+        0,
+        [
+          "bent_corridor",
+          "depressed_floor",
+          "inset_chamber",
+          "rectangle"
+        ]
+      ],
+      "count": 1
+    },
+    {
+      "signature": [
+        4,
+        0,
+        0,
+        0,
+        [
+          "irregular_octagonal",
+          "irregular_orthogonal",
+          "raised_center",
+          "rectangle"
+        ]
+      ],
+      "count": 1
+    },
+    {
+      "signature": [
+        4,
+        2,
+        1,
+        0,
+        [
+          "depressed_floor",
+          "inset_chamber",
+          "rectangle",
+          "t_shaped"
+        ]
+      ],
+      "count": 1
+    },
+    {
+      "signature": [
+        3,
+        0,
+        0,
+        0,
+        [
+          "irregular_orthogonal",
+          "l_shaped",
+          "rectangle"
+        ]
+      ],
+      "count": 1
+    },
+    {
+      "signature": [
+        3,
+        1,
+        1,
+        0,
+        [
+          "rectangle",
+          "rectangle_with_side_alcoves",
+          "t_shaped"
+        ]
+      ],
+      "count": 1
+    },
+    {
+      "signature": [
+        5,
+        2,
+        3,
+        0,
+        [
+          "irregular_orthogonal",
+          "l_shaped",
+          "raised_center",
+          "rectangle"
+        ]
+      ],
+      "count": 1
+    },
+    {
+      "signature": [
+        5,
+        2,
+        2,
+        0,
+        [
+          "closet",
+          "inset_chamber",
+          "rectangle",
+          "rectangle_with_side_alcoves",
+          "t_shaped"
+        ]
+      ],
+      "count": 1
+    },
+    {
+      "signature": [
+        4,
+        0,
+        0,
+        0,
+        [
+          "bent_corridor",
+          "l_shaped",
+          "rectangle"
+        ]
+      ],
+      "count": 1
+    },
+    {
+      "signature": [
+        5,
+        2,
+        3,
+        0,
+        [
+          "closet",
+          "irregular_octagonal",
+          "rectangle",
+          "rectangle_with_side_alcoves",
+          "t_shaped"
+        ]
+      ],
+      "count": 1
+    }
+  ],
+  "metrics_measured": [
+    "node degree distribution",
+    "cycle count",
+    "branch nodes",
+    "graph diameter",
+    "critical path length",
+    "room shape signatures",
+    "topology family",
+    "seed reproducibility"
+  ],
+  "representative_records": [
+    {
+      "source_sample": "synthetic/basic/3000",
+      "tier": "basic",
+      "family": "hub_and_spoke",
+      "seed": 3000,
+      "rooms": 5,
+      "branches": 0,
+      "cycles": 0,
+      "shapes": [
+        "closet",
+        "inset_chamber",
+        "rectangle",
+        "rectangle_with_side_alcoves",
+        "t_shaped"
+      ]
+    },
+    {
+      "source_sample": "synthetic/basic/82190",
+      "tier": "basic",
+      "family": "nested_loops",
+      "seed": 82190,
+      "rooms": 5,
+      "branches": 2,
+      "cycles": 3,
+      "shapes": [
+        "irregular_orthogonal",
+        "l_shaped",
+        "raised_center",
+        "rectangle"
+      ]
+    },
+    {
+      "source_sample": "synthetic/basic/161380",
+      "tier": "basic",
+      "family": "asymmetric_exploration",
+      "seed": 161380,
+      "rooms": 5,
+      "branches": 1,
+      "cycles": 0,
+      "shapes": [
+        "depressed_floor",
+        "inset_chamber",
+        "rectangle",
+        "rectangle_with_side_alcoves",
+        "t_shaped"
+      ]
+    },
+    {
+      "source_sample": "synthetic/intermediate/68433",
+      "tier": "intermediate",
+      "family": "figure_eight",
+      "seed": 68433,
+      "rooms": 6,
+      "branches": 2,
+      "cycles": 1,
+      "shapes": [
+        "closet",
+        "irregular_octagonal",
+        "irregular_orthogonal",
+        "l_shaped",
+        "raised_center",
+        "rectangle_with_side_alcoves"
+      ]
+    },
+    {
+      "source_sample": "synthetic/intermediate/187218",
+      "tier": "intermediate",
+      "family": "hub_and_spoke",
+      "seed": 187218,
+      "rooms": 7,
+      "branches": 2,
+      "cycles": 1,
+      "shapes": [
+        "bent_corridor",
+        "closet",
+        "irregular_octagonal",
+        "irregular_orthogonal",
+        "l_shaped",
+        "raised_center",
+        "rectangle"
+      ]
+    },
+    {
+      "source_sample": "synthetic/advanced/38838",
+      "tier": "advanced",
+      "family": "hub_and_spoke",
+      "seed": 38838,
+      "rooms": 13,
+      "branches": 4,
+      "cycles": 3,
+      "shapes": [
+        "bent_corridor",
+        "closet",
+        "depressed_floor",
+        "inset_chamber",
+        "irregular_octagonal",
+        "irregular_orthogonal",
+        "l_shaped",
+        "raised_center",
+        "rectangle",
+        "rectangle_with_side_alcoves",
+        "t_shaped"
+      ]
+    },
+    {
+      "source_sample": "synthetic/advanced/189299",
+      "tier": "advanced",
+      "family": "gated_nonlinear",
+      "seed": 189299,
+      "rooms": 13,
+      "branches": 5,
+      "cycles": 3,
+      "shapes": [
+        "bent_corridor",
+        "closet",
+        "depressed_floor",
+        "inset_chamber",
+        "irregular_octagonal",
+        "irregular_orthogonal",
+        "l_shaped",
+        "raised_center",
+        "rectangle",
+        "rectangle_with_side_alcoves",
+        "t_shaped"
+      ]
+    },
+    {
+      "source_sample": "synthetic/advanced/521897",
+      "tier": "advanced",
+      "family": "gated_nonlinear",
+      "seed": 521897,
+      "rooms": 14,
+      "branches": 4,
+      "cycles": 4,
+      "shapes": [
+        "bent_corridor",
+        "closet",
+        "depressed_floor",
+        "inset_chamber",
+        "irregular_octagonal",
+        "irregular_orthogonal",
+        "l_shaped",
+        "raised_center",
+        "rectangle",
+        "rectangle_with_side_alcoves",
+        "t_shaped"
+      ]
+    },
+    {
+      "source_sample": "synthetic/expert/183461",
+      "tier": "expert",
+      "family": "gated_nonlinear",
+      "seed": 183461,
+      "rooms": 22,
+      "branches": 10,
+      "cycles": 6,
+      "shapes": [
+        "bent_corridor",
+        "closet",
+        "depressed_floor",
+        "inset_chamber",
+        "irregular_octagonal",
+        "irregular_orthogonal",
+        "l_shaped",
+        "raised_center",
+        "rectangle",
+        "rectangle_with_side_alcoves",
+        "t_shaped"
+      ]
+    },
+    {
+      "source_sample": "synthetic/expert/421031",
+      "tier": "expert",
+      "family": "gated_nonlinear",
+      "seed": 421031,
+      "rooms": 16,
+      "branches": 6,
+      "cycles": 2,
+      "shapes": [
+        "bent_corridor",
+        "closet",
+        "depressed_floor",
+        "inset_chamber",
+        "irregular_octagonal",
+        "irregular_orthogonal",
+        "l_shaped",
+        "raised_center",
+        "rectangle",
+        "rectangle_with_side_alcoves",
+        "t_shaped"
+      ]
+    }
+  ],
+  "limitations": [
+    "static validation only; no engine smoke test",
+    "families are deterministic graph-generation families, not learned model outputs"
+  ]
+}

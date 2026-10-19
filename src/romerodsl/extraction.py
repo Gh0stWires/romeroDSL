@@ -1541,6 +1541,14 @@ def generate_synthetic_dsl(tier: str, *, seed: int) -> dict[str, Any]:
     required_lock_count = min(required_lock_count, max(0, main_count - 3))
     optional_lock = tier in {"advanced", "expert"} and seed % 2 == 0 and branch_count > 0
     theme_name = ("techbase", "hell", "industrial", "stone")[seed % 4]
+    topology_family = (
+        "hub_and_spoke",
+        "interconnected_clusters",
+        "nested_loops",
+        "figure_eight",
+        "asymmetric_exploration",
+        "gated_nonlinear",
+    )[seed % 6]
     secondary, mood = SYNTHETIC_THEME_PRESETS[theme_name]
     materials = _synthetic_materials(theme_name)
 
@@ -1604,6 +1612,55 @@ def generate_synthetic_dsl(tier: str, *, seed: int) -> dict[str, Any]:
         )
         if edge_id:
             branch_edges[branch_id] = (edge_id, main_ids[anchor])
+
+    def safe_noncritical_pair(source: str, target: str) -> bool:
+        source_index = main_ids.index(source) if source in main_ids else None
+        target_index = main_ids.index(target) if target in main_ids else None
+        if source_index is None or target_index is None:
+            return True
+        left, right = sorted((source_index, target_index))
+        return not any(left <= gate < right for gate in gate_positions)
+
+    def safe_branch_pair(branch_id: str, main_target: str) -> bool:
+        branch_edge = branch_edges.get(branch_id)
+        if branch_edge is None:
+            return False
+        anchor = branch_edge[1]
+        return safe_noncritical_pair(anchor, main_target)
+
+    if topology_family == "hub_and_spoke" and branch_ids:
+        hub = main_ids[main_count // 2]
+        for branch_id in branch_ids[::2]:
+            if safe_branch_pair(branch_id, hub):
+                add_connection(hub, branch_id, kind="hub_spoke", secret=branch_id == branch_ids[0])
+    elif topology_family == "interconnected_clusters":
+        for index in range(0, main_count - 3, 3):
+            if safe_noncritical_pair(main_ids[index], main_ids[index + 2]):
+                add_connection(main_ids[index], main_ids[index + 2], kind="cluster_link")
+        for left, right in zip(branch_ids, branch_ids[1:]):
+            add_connection(left, right, kind="cluster_link")
+    elif topology_family == "nested_loops":
+        for distance in (2, 4, 6):
+            for left in range(0, main_count - distance, max(2, distance)):
+                right = left + distance
+                if safe_noncritical_pair(main_ids[left], main_ids[right]):
+                    add_connection(main_ids[left], main_ids[right], kind="nested_loop")
+    elif topology_family == "figure_eight" and main_count >= 6:
+        center = main_count // 2
+        for offset in (-3, 3):
+            left, right = center + offset, center
+            if 0 <= left < main_count and safe_noncritical_pair(main_ids[left], main_ids[right]):
+                add_connection(main_ids[left], main_ids[right], kind="figure_eight")
+        if branch_ids and safe_branch_pair(branch_ids[0], main_ids[center]):
+            add_connection(main_ids[center], branch_ids[0], kind="figure_eight", secret=True)
+    elif topology_family == "asymmetric_exploration" and len(branch_ids) >= 2:
+        for left, right in zip(branch_ids, branch_ids[1:]):
+            if safe_noncritical_pair(branch_edges[left][1], branch_edges[right][1]):
+                add_connection(left, right, kind="branch_depth", secret=right == branch_ids[-1])
+    elif topology_family == "gated_nonlinear" and main_count >= 5:
+        for left, right in ((0, 2), (main_count - 3, main_count - 1)):
+            if safe_noncritical_pair(main_ids[left], main_ids[right]):
+                add_connection(main_ids[left], main_ids[right], kind="gated_loop")
 
     chord_count = {"basic": seed % 2, "intermediate": 1, "advanced": 2, "expert": 4}[tier]
     for _ in range(chord_count * 8):
@@ -1740,10 +1797,11 @@ def generate_synthetic_dsl(tier: str, *, seed: int) -> dict[str, Any]:
             "complexity_tier": tier,
             "generator_seed": seed,
             "generator_version": "phase4_curriculum_v1",
+            "topology_family": topology_family,
         },
         "design_intent": {
             "summary": f"A synthetic {tier} {theme_name} expedition with {room_count} authored spaces.",
-            "topology": tier,
+            "topology": topology_family,
             "progression_style": "required_key_lock" if gates else ("optional_key_lock" if optional_key else "reachable_exit"),
             "combat_style": "distributed_encounters" if tier != "basic" else "light_pressure",
             "height_style": "varied_sector_heights" if tier != "basic" else "mostly_level",
@@ -1932,6 +1990,7 @@ def generate_synthetic_training_records(tier: str, *, count: int, seed: int) -> 
                             "dataset_class": "synthetic",
                             "extraction_mode": "synthetic_curriculum",
                             "complexity_tier": tier,
+                            "topology_family": document["metadata"]["topology_family"],
                             "bucket": f"synthetic_{tier}",
                             "colors": metrics["progression"]["gate_colors"],
                             "static_export_valid": True,

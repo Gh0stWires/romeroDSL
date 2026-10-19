@@ -36,6 +36,21 @@ class SyntheticCurriculumTests(unittest.TestCase):
                 self.assertEqual(document["metadata"]["dataset_class"], "synthetic")
                 self.assertEqual(document["metadata"]["complexity_tier"], tier)
 
+    def test_topology_families_are_seeded_and_structurally_distinct(self) -> None:
+        documents = [generate_synthetic_dsl("basic", seed=600 + index) for index in range(6)]
+        families = {document["metadata"]["topology_family"] for document in documents}
+        signatures = {
+            (
+                len(document["spaces"]),
+                len(document["connections"]),
+                structural_metrics(document)["graph"]["branch_nodes"],
+                structural_metrics(document)["graph"]["cycle_count"],
+            )
+            for document in documents
+        }
+        self.assertEqual(len(families), 6)
+        self.assertGreaterEqual(len(signatures), 3)
+
     def test_curriculum_adds_required_structural_signals(self) -> None:
         intermediate = structural_metrics(generate_synthetic_dsl("intermediate", seed=802))
         advanced = structural_metrics(generate_synthetic_dsl("advanced", seed=803))
