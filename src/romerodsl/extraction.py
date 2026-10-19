@@ -1574,15 +1574,18 @@ def generate_synthetic_dsl(tier: str, *, seed: int) -> dict[str, Any]:
             )
         )
 
+    branch_edges: dict[str, tuple[str, str]] = {}
     for index, branch_id in enumerate(branch_ids):
         anchor = 1 + ((seed + index * 3) % max(1, main_count - 2))
         is_secret = index == 0 or (tier == "expert" and index % 3 == 0)
-        add_connection(
+        edge_id = add_connection(
             main_ids[anchor],
             branch_id,
             kind="hidden_wall" if is_secret else ("doorway" if index % 2 else "hallway"),
             secret=is_secret,
         )
+        if edge_id:
+            branch_edges[branch_id] = (edge_id, main_ids[anchor])
 
     chord_count = {"basic": seed % 2, "intermediate": 1, "advanced": 2, "expert": 4}[tier]
     for _ in range(chord_count * 8):
@@ -1597,25 +1600,22 @@ def generate_synthetic_dsl(tier: str, *, seed: int) -> dict[str, Any]:
     optional_key: tuple[str, str, str] | None = None
     if optional_lock and branch_ids:
         branch_id = branch_ids[-1]
-        anchor = next(
-            connection["from"]
-            for connection in connections
-            if connection["to"] == branch_id
-        )
-        optional_color = KEY_COLOR_ORDER[(required_lock_count + seed) % len(KEY_COLOR_ORDER)]
-        gate_id = add_connection(anchor, branch_id, kind="locked_door", key=optional_color)
-        if gate_id:
+        branch_edge = branch_edges.get(branch_id)
+        if branch_edge is not None:
+            gate_id, anchor = branch_edge
+            optional_color = KEY_COLOR_ORDER[(required_lock_count + seed) % len(KEY_COLOR_ORDER)]
+            matching_connection = next(
+                connection for connection in connections if connection["id"] == gate_id
+            )
+            matching_connection.update(
+                {
+                    "type": "locked_door",
+                    "key": optional_color,
+                    "required_for_exit": False,
+                    "secret": True,
+                }
+            )
             optional_key = (optional_color, anchor, gate_id)
-            connections = [connection for connection in connections if connection["id"] != gate_id]
-            connection = {
-                "id": gate_id,
-                "from": anchor,
-                "to": branch_id,
-                "type": "locked_door",
-                "key": optional_color,
-                "required_for_exit": False,
-            }
-            connections.append(connection)
 
     key_locations = {
         color: main_ids[max(0, position - 1)]

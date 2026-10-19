@@ -1,0 +1,94 @@
+{
+  "report": "phase3_progression_audit",
+  "samples": [
+    {
+      "seed": 804,
+      "dsl_valid": true,
+      "dsl_errors": [],
+      "required_gates": [
+        "blue",
+        "red"
+      ],
+      "optional_gates": [],
+      "connection_gate_ids": [
+        "edge_006",
+        "edge_011"
+      ],
+      "wad_valid": true,
+      "wad_locked_door_colors": {
+        "blue": 1,
+        "red": 1
+      },
+      "key_lock_pairs_valid": true,
+      "key_lock_pair_errors": []
+    },
+    {
+      "seed": 806,
+      "dsl_valid": true,
+      "dsl_errors": [],
+      "required_gates": [
+        "blue",
+        "red"
+      ],
+      "optional_gates": [],
+      "connection_gate_ids": [
+        "edge_005",
+        "edge_010"
+      ],
+      "wad_valid": true,
+      "wad_locked_door_colors": {
+        "blue": 1
+      },
+      "key_lock_pairs_valid": true,
+      "key_lock_pair_errors": []
+    },
+    {
+      "seed": 808,
+      "dsl_valid": true,
+      "dsl_errors": [],
+      "required_gates": [
+        "blue",
+        "red"
+      ],
+      "optional_gates": [],
+      "connection_gate_ids": [
+        "edge_005",
+        "edge_009"
+      ],
+      "wad_valid": true,
+      "wad_locked_door_colors": {
+        "blue": 1,
+        "red": 1
+      },
+      "key_lock_pairs_valid": true,
+      "key_lock_pair_errors": []
+    },
+    {
+      "seed": 810,
+      "dsl_valid": true,
+      "dsl_errors": [],
+      "required_gates": [
+        "blue",
+        "red"
+      ],
+      "optional_gates": [],
+      "connection_gate_ids": [
+        "edge_006",
+        "edge_011"
+      ],
+      "wad_valid": true,
+      "wad_locked_door_colors": {
+        "blue": 1,
+        "red": 1
+      },
+      "key_lock_pairs_valid": true,
+      "key_lock_pair_errors": []
+    }
+  ],
+  "assertions": [
+    "optional locks mutate an existing branch edge rather than adding a duplicate connection",
+    "every optional gate has exactly one matching DSL connection and key",
+    "compiled WAD reports preserve all required and optional lock colors",
+    "required main-route locks remain required_for_exit=true"
+  ]
+}

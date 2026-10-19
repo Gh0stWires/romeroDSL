@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from romerodsl.compiler import compile_to_plan
+from romerodsl.compiler import compile_to_plan, compile_to_wad
 from romerodsl.extraction import (
     SYNTHETIC_TIERS,
     generate_synthetic_dsl,
@@ -47,6 +47,35 @@ class SyntheticCurriculumTests(unittest.TestCase):
         self.assertGreaterEqual(advanced["room_role_counts"].get("secret_reward", 0), 1)
         self.assertGreaterEqual(expert["graph"]["branch_nodes"], 2)
         self.assertGreaterEqual(expert["graph"]["cycle_count"], 2)
+
+    def test_optional_branch_lock_reuses_existing_branch_edge(self) -> None:
+        document = generate_synthetic_dsl("expert", seed=804)
+        report = validate_document(document)
+        self.assertTrue(report.valid, report.errors)
+        optional_gates = [
+            gate for gate in document["progression"]["gates"]
+            if not gate.get("required_for_exit", True)
+        ]
+        self.assertEqual(len(optional_gates), 1)
+        optional = optional_gates[0]
+        matching = [
+            connection for connection in document["connections"]
+            if connection["id"] == optional["id"]
+        ]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["type"], "locked_door")
+        self.assertEqual(matching[0]["key"], optional["key"])
+        self.assertFalse(matching[0].get("required_for_exit", True))
+        self.assertEqual(
+            [key["color"] for key in document["progression"]["keys"]].count(optional["key"]),
+            1,
+        )
+        compile_to_plan(document)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            report = compile_to_wad(document, Path(temp_dir) / "optional_branch.wad")
+        self.assertTrue(report["valid"], report)
+        self.assertEqual(report["locked_door_colors"], {"blue": 1, "red": 1, "yellow": 1})
+        self.assertTrue(report["key_lock_pairs_valid"])
 
     def test_prompts_truthfully_describe_exact_authored_room_count(self) -> None:
         records = generate_synthetic_training_records("advanced", count=4, seed=901)
