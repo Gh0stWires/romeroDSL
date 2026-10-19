@@ -812,6 +812,12 @@ def training_record_from_graph_sample(
     required_colors = _required_key_lock_colors(sample)
     observed_colors = _paired_key_lock_colors(sample)
     document = dsl_from_graph_sample(sample, mode=mode)
+    validation_report = validate_document(document)
+    if not validation_report.valid:
+        raise TopologyExtractionError(
+            "extracted DSL failed schema/progression validation: "
+            + "; ".join(validation_report.errors)
+        )
     counts = _mapping(sample.get("counts"))
     progression = _mapping(sample.get("progression"))
     prompt_variants = (
@@ -1084,6 +1090,15 @@ def audit_topology_extraction(graph_cache: Path, *, limit: int = 25) -> dict[str
                 },
             }
         )
+    preservation_fields = ("branch_signal", "cycle_signal", "connected_signal")
+    preservation_counts = {
+        field: sum(bool(row["preserved"].get(field)) for row in rows)
+        for field in preservation_fields
+    }
+    partially_supported = sum(
+        not all(bool(row["preserved"].get(field)) for field in preservation_fields)
+        for row in rows
+    )
     return {
         "schema": "romerodsl_topology_extraction_audit_v1",
         "source_graph_cache": str(graph_cache),
@@ -1091,6 +1106,8 @@ def audit_topology_extraction(graph_cache: Path, *, limit: int = 25) -> dict[str
         "audited_samples": len(manifest_rows),
         "supported_samples": len(rows),
         "rejected_samples": len(manifest_rows) - len(rows),
+        "partially_supported_samples": partially_supported,
+        "preservation_counts": preservation_counts,
         "rejection_reasons": dict(rejected),
         "representative_comparisons": rows,
         "information_preserved": [
