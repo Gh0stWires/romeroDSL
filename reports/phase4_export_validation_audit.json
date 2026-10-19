@@ -1,0 +1,458 @@
+{
+  "schema": "romerodsl_phase4_export_validation_v1",
+  "summary": {
+    "basic": {
+      "probed": 12,
+      "accepted": 12,
+      "rejected": 0,
+      "rejection_reasons": {}
+    },
+    "intermediate": {
+      "probed": 12,
+      "accepted": 7,
+      "rejected": 5,
+      "rejection_reasons": {
+        "physical_progression": 5
+      }
+    },
+    "advanced": {
+      "probed": 12,
+      "accepted": 5,
+      "rejected": 7,
+      "rejection_reasons": {
+        "physical_progression": 7
+      }
+    },
+    "expert": {
+      "probed": 12,
+      "accepted": 5,
+      "rejected": 7,
+      "rejection_reasons": {
+        "physical_progression": 7
+      }
+    }
+  },
+  "representative_samples": [
+    {
+      "tier": "basic",
+      "seed": 1200,
+      "rooms": 4,
+      "physical_progression": {
+        "valid": true,
+        "start_reachable_cells": 186,
+        "gate_checks": [],
+        "errors": []
+      },
+      "wad_valid": true,
+      "locked_door_colors": {},
+      "key_lock_pairs_valid": true,
+      "geometry_profile": "sector_primitives_v0.5",
+      "engine_tested": false
+    },
+    {
+      "tier": "basic",
+      "seed": 9119,
+      "rooms": 4,
+      "physical_progression": {
+        "valid": true,
+        "start_reachable_cells": 280,
+        "gate_checks": [],
+        "errors": []
+      },
+      "wad_valid": true,
+      "locked_door_colors": {},
+      "key_lock_pairs_valid": true,
+      "geometry_profile": "sector_primitives_v0.5",
+      "engine_tested": false
+    },
+    {
+      "tier": "basic",
+      "seed": 17038,
+      "rooms": 5,
+      "physical_progression": {
+        "valid": true,
+        "start_reachable_cells": 278,
+        "gate_checks": [],
+        "errors": []
+      },
+      "wad_valid": true,
+      "locked_door_colors": {},
+      "key_lock_pairs_valid": true,
+      "geometry_profile": "sector_primitives_v0.5",
+      "engine_tested": false
+    },
+    {
+      "tier": "basic",
+      "seed": 24957,
+      "rooms": 4,
+      "physical_progression": {
+        "valid": true,
+        "start_reachable_cells": 233,
+        "gate_checks": [],
+        "errors": []
+      },
+      "wad_valid": true,
+      "locked_door_colors": {},
+      "key_lock_pairs_valid": true,
+      "geometry_profile": "sector_primitives_v0.5",
+      "engine_tested": false
+    },
+    {
+      "tier": "intermediate",
+      "seed": 19119,
+      "rooms": 8,
+      "physical_progression": {
+        "valid": true,
+        "start_reachable_cells": 430,
+        "gate_checks": [],
+        "errors": []
+      },
+      "wad_valid": true,
+      "locked_door_colors": {},
+      "key_lock_pairs_valid": true,
+      "geometry_profile": "sector_primitives_v0.5",
+      "engine_tested": false
+    },
+    {
+      "tier": "intermediate",
+      "seed": 27038,
+      "rooms": 6,
+      "physical_progression": {
+        "valid": true,
+        "start_reachable_cells": 310,
+        "gate_checks": [
+          {
+            "gate_id": "edge_001",
+            "color": "blue",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          }
+        ],
+        "errors": []
+      },
+      "wad_valid": true,
+      "locked_door_colors": {
+        "blue": 1
+      },
+      "key_lock_pairs_valid": true,
+      "geometry_profile": "sector_primitives_v0.5",
+      "engine_tested": false
+    },
+    {
+      "tier": "intermediate",
+      "seed": 34957,
+      "rooms": 7,
+      "physical_progression": {
+        "valid": true,
+        "start_reachable_cells": 397,
+        "gate_checks": [
+          {
+            "gate_id": "edge_003",
+            "color": "blue",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          }
+        ],
+        "errors": []
+      },
+      "wad_valid": true,
+      "locked_door_colors": {
+        "blue": 1
+      },
+      "key_lock_pairs_valid": true,
+      "geometry_profile": "sector_primitives_v0.5",
+      "engine_tested": false
+    },
+    {
+      "tier": "intermediate",
+      "seed": 42876,
+      "rooms": 6,
+      "physical_progression": {
+        "valid": true,
+        "start_reachable_cells": 325,
+        "gate_checks": [],
+        "errors": []
+      },
+      "wad_valid": true,
+      "locked_door_colors": {},
+      "key_lock_pairs_valid": true,
+      "geometry_profile": "sector_primitives_v0.5",
+      "engine_tested": false
+    },
+    {
+      "tier": "advanced",
+      "seed": 29119,
+      "rooms": 13,
+      "physical_progression": {
+        "valid": true,
+        "start_reachable_cells": 776,
+        "gate_checks": [
+          {
+            "gate_id": "edge_003",
+            "color": "blue",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          },
+          {
+            "gate_id": "edge_006",
+            "color": "red",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          }
+        ],
+        "errors": []
+      },
+      "wad_valid": true,
+      "locked_door_colors": {
+        "blue": 1,
+        "red": 1
+      },
+      "key_lock_pairs_valid": true,
+      "geometry_profile": "sector_primitives_v0.5",
+      "engine_tested": false
+    },
+    {
+      "tier": "advanced",
+      "seed": 52876,
+      "rooms": 14,
+      "physical_progression": {
+        "valid": true,
+        "start_reachable_cells": 889,
+        "gate_checks": [
+          {
+            "gate_id": "edge_008",
+            "color": "blue",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          }
+        ],
+        "errors": []
+      },
+      "wad_valid": true,
+      "locked_door_colors": {
+        "blue": 1,
+        "yellow": 1
+      },
+      "key_lock_pairs_valid": true,
+      "geometry_profile": "sector_primitives_v0.5",
+      "engine_tested": false
+    },
+    {
+      "tier": "advanced",
+      "seed": 60795,
+      "rooms": 15,
+      "physical_progression": {
+        "valid": true,
+        "start_reachable_cells": 844,
+        "gate_checks": [
+          {
+            "gate_id": "edge_004",
+            "color": "blue",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          },
+          {
+            "gate_id": "edge_007",
+            "color": "red",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          }
+        ],
+        "errors": []
+      },
+      "wad_valid": true,
+      "locked_door_colors": {
+        "blue": 1,
+        "red": 1
+      },
+      "key_lock_pairs_valid": true,
+      "geometry_profile": "sector_primitives_v0.5",
+      "engine_tested": false
+    },
+    {
+      "tier": "advanced",
+      "seed": 76633,
+      "rooms": 15,
+      "physical_progression": {
+        "valid": true,
+        "start_reachable_cells": 888,
+        "gate_checks": [
+          {
+            "gate_id": "edge_004",
+            "color": "blue",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          },
+          {
+            "gate_id": "edge_007",
+            "color": "red",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          }
+        ],
+        "errors": []
+      },
+      "wad_valid": true,
+      "locked_door_colors": {
+        "blue": 1,
+        "red": 1
+      },
+      "key_lock_pairs_valid": true,
+      "geometry_profile": "sector_primitives_v0.5",
+      "engine_tested": false
+    },
+    {
+      "tier": "expert",
+      "seed": 47038,
+      "rooms": 24,
+      "physical_progression": {
+        "valid": true,
+        "start_reachable_cells": 1409,
+        "gate_checks": [
+          {
+            "gate_id": "edge_006",
+            "color": "blue",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          },
+          {
+            "gate_id": "edge_011",
+            "color": "red",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          }
+        ],
+        "errors": []
+      },
+      "wad_valid": true,
+      "locked_door_colors": {
+        "blue": 2,
+        "red": 1
+      },
+      "key_lock_pairs_valid": true,
+      "geometry_profile": "sector_primitives_v0.5",
+      "engine_tested": false
+    },
+    {
+      "tier": "expert",
+      "seed": 54957,
+      "rooms": 21,
+      "physical_progression": {
+        "valid": true,
+        "start_reachable_cells": 1210,
+        "gate_checks": [
+          {
+            "gate_id": "edge_004",
+            "color": "blue",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          },
+          {
+            "gate_id": "edge_007",
+            "color": "red",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          },
+          {
+            "gate_id": "edge_010",
+            "color": "yellow",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          }
+        ],
+        "errors": []
+      },
+      "wad_valid": true,
+      "locked_door_colors": {
+        "blue": 1,
+        "red": 1,
+        "yellow": 1
+      },
+      "key_lock_pairs_valid": true,
+      "geometry_profile": "sector_primitives_v0.5",
+      "engine_tested": false
+    },
+    {
+      "tier": "expert",
+      "seed": 78714,
+      "rooms": 22,
+      "physical_progression": {
+        "valid": true,
+        "start_reachable_cells": 1300,
+        "gate_checks": [
+          {
+            "gate_id": "edge_006",
+            "color": "blue",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          },
+          {
+            "gate_id": "edge_011",
+            "color": "red",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          }
+        ],
+        "errors": []
+      },
+      "wad_valid": true,
+      "locked_door_colors": {
+        "blue": 1,
+        "red": 1,
+        "yellow": 1
+      },
+      "key_lock_pairs_valid": true,
+      "geometry_profile": "sector_primitives_v0.5",
+      "engine_tested": false
+    },
+    {
+      "tier": "expert",
+      "seed": 102471,
+      "rooms": 17,
+      "physical_progression": {
+        "valid": true,
+        "start_reachable_cells": 969,
+        "gate_checks": [
+          {
+            "gate_id": "edge_003",
+            "color": "blue",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          },
+          {
+            "gate_id": "edge_006",
+            "color": "red",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          },
+          {
+            "gate_id": "edge_008",
+            "color": "yellow",
+            "key_reachable_before_gate": true,
+            "exit_reachable_without_gate": false
+          }
+        ],
+        "errors": []
+      },
+      "wad_valid": true,
+      "locked_door_colors": {
+        "blue": 1,
+        "red": 1,
+        "yellow": 1
+      },
+      "key_lock_pairs_valid": true,
+      "geometry_profile": "sector_primitives_v0.5",
+      "engine_tested": false
+    }
+  ],
+  "quality_gates": [
+    "schema validation",
+    "semantic progression validation",
+    "abstract plan compilation",
+    "full sector-primitive WAD export",
+    "static WAD integrity validation",
+    "compiled cell-layout physical progression validation"
+  ],
+  "engine_tested": false,
+  "engine_note": "No compatible Doom engine smoke harness was available; static validation is not engine playtesting."
+}

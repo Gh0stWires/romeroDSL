@@ -105,6 +105,8 @@ def compile_to_layout(document: dict[str, Any]) -> dict[str, Any]:
     key_colors: dict[str, str] = {}
     door_locks: dict[str, str] = {}
     room_centers: dict[str, Cell] = {}
+    connection_doors: dict[str, Cell] = {}
+    routed_cells: set[Cell] = set()
 
     for space_id, box in room_boxes.items():
         space = spaces[space_id]
@@ -132,6 +134,8 @@ def compile_to_layout(document: dict[str, Any]) -> dict[str, Any]:
             source_height=int(spaces[source].get("floor_height", 0)),
             target_height=int(spaces[target].get("floor_height", 0)),
             token=DOOR if connection.get("type") in {"door", "locked_door", "keyed_door"} else FLOOR,
+            room_boxes=room_boxes,
+            routed_cells=routed_cells,
         )
         source_materials = resolve_materials(document, spaces[source])
         _apply_path_materials(surface_materials, room_centers[source], room_centers[target], source_materials)
@@ -139,6 +143,9 @@ def compile_to_layout(document: dict[str, Any]) -> dict[str, Any]:
             color = str(connection.get("key", "blue"))
             door_locks[_cell_key(door_cell)] = color
             surface_materials["door"][door_cell[0]][door_cell[1]] = source_materials["door"]
+        connection_id = connection.get("id") or f"{source}->{target}"
+        if connection.get("type") in {"locked_door", "keyed_door"}:
+            connection_doors[str(connection_id)] = door_cell
 
     _place_progression_things(document, room_boxes, grid, floor_heights, key_colors)
     _place_space_things(document, room_boxes, grid)
@@ -154,7 +161,105 @@ def compile_to_layout(document: dict[str, Any]) -> dict[str, Any]:
         "surface_materials": surface_materials,
         "key_colors": key_colors,
         "door_locks": door_locks,
+        "connection_doors": {key: _cell_key(value) for key, value in connection_doors.items()},
+        "physical_progression": _physical_progression_report(
+            document, grid, connection_doors, key_colors
+        ),
     }
+
+
+def validate_physical_progression(document: dict[str, Any]) -> dict[str, Any]:
+    """Check route accessibility on the compiled cell layout without repairing it."""
+
+    return compile_to_layout(document)["physical_progression"]
+
+
+def _physical_progression_report(
+    document: dict[str, Any],
+    grid: list[list[str]],
+    connection_doors: dict[str, Cell],
+    key_colors: dict[str, str],
+) -> dict[str, Any]:
+    starts = _find_cells(grid, START)
+    exits = _find_cells(grid, EXIT)
+    passable = {
+        (row, column)
+        for row, values in enumerate(grid)
+        for column, token in enumerate(values)
+        if token != "empty"
+    }
+    errors: list[str] = []
+    if not starts:
+        errors.append("compiled layout has no player start")
+    if not exits:
+        errors.append("compiled layout has no exit")
+    reachable = _reachable_cells(passable, starts)
+    if not reachable.intersection(exits):
+        errors.append("compiled exit is not reachable from start")
+
+    progression = document["progression"]
+    gate_checks: list[dict[str, Any]] = []
+    key_cells_by_color: dict[str, set[Cell]] = {}
+    for cell, color in key_colors.items():
+        key_cells_by_color.setdefault(color, set()).add(_parse_cell_key(cell))
+    for gate in progression.get("gates", []):
+        if not isinstance(gate, dict) or gate.get("type") not in {"locked_door", "keyed_door"}:
+            continue
+        if not gate.get("required_for_exit", False):
+            continue
+        gate_id = str(gate.get("id"))
+        color = str(gate.get("key"))
+        door = connection_doors.get(gate_id)
+        if door is None:
+            errors.append(f"compiled layout has no door cell for required gate {gate_id!r}")
+            continue
+        blocked_reachable = _reachable_cells(passable - {door}, starts)
+        key_reachable = bool(blocked_reachable & key_cells_by_color.get(color, set()))
+        exit_reachable = bool(blocked_reachable.intersection(exits))
+        gate_checks.append({
+            "gate_id": gate_id,
+            "color": color,
+            "key_reachable_before_gate": key_reachable,
+            "exit_reachable_without_gate": exit_reachable,
+        })
+        if not key_reachable:
+            errors.append(f"{color} key is not reachable before compiled gate {gate_id!r}")
+        if exit_reachable:
+            errors.append(f"compiled exit bypasses required gate {gate_id!r}")
+
+    return {
+        "valid": not errors,
+        "start_reachable_cells": len(reachable),
+        "gate_checks": gate_checks,
+        "errors": errors,
+    }
+
+
+def _find_cells(grid: list[list[str]], token: str) -> set[Cell]:
+    return {
+        (row, column)
+        for row, values in enumerate(grid)
+        for column, value in enumerate(values)
+        if value == token
+    }
+
+
+def _reachable_cells(passable: set[Cell], starts: set[Cell]) -> set[Cell]:
+    reachable: set[Cell] = set()
+    frontier = list(starts & passable)
+    while frontier:
+        cell = frontier.pop()
+        if cell in reachable or cell not in passable:
+            continue
+        reachable.add(cell)
+        row, column = cell
+        frontier.extend(((row - 1, column), (row + 1, column), (row, column - 1), (row, column + 1)))
+    return reachable
+
+
+def _parse_cell_key(value: str) -> Cell:
+    row, column = value.split(",", 1)
+    return int(row), int(column)
 
 
 def compile_to_wad(document: dict[str, Any], path: Path, cell_size: int = 128) -> dict[str, Any]:
@@ -556,7 +661,30 @@ def _carve_corridor(
     source_height: int,
     target_height: int,
     token: str,
+    *,
+    room_boxes: dict[str, Box] | None = None,
+    routed_cells: set[Cell] | None = None,
 ) -> Cell:
+    if room_boxes is None:
+        path = _manhattan_path(start, end)
+    else:
+        path = _obstacle_aware_path(grid, start, end, room_boxes, routed_cells or set())
+    if len(path) < 2:
+        raise ValueError(f"could not route corridor between {start!r} and {end!r}")
+
+    endpoint_cells = _box_cells(room_boxes, start, end) if room_boxes else {start, end}
+    exterior_path = [cell for cell in path if cell not in endpoint_cells]
+    door_index = len(exterior_path) // 2 if exterior_path else len(path) // 2
+    door_cell = exterior_path[door_index] if exterior_path else path[door_index]
+    for index, (pr, pc) in enumerate(path):
+        grid[pr][pc] = token if token == DOOR and (pr, pc) == door_cell else FLOOR
+        floor_heights[pr][pc] = source_height if index <= path.index(door_cell) else target_height
+    if routed_cells is not None:
+        routed_cells.update(cell for cell in path if cell not in endpoint_cells)
+    return door_cell
+
+
+def _manhattan_path(start: Cell, end: Cell) -> list[Cell]:
     path: list[Cell] = []
     r, c = start
     end_r, end_c = end
@@ -569,13 +697,86 @@ def _carve_corridor(
         path.append((r, c))
         r += step_r
     path.append(end)
+    return path
 
-    door_index = max(1, min(len(path) - 2, len(path) // 2)) if len(path) > 2 else 0
-    door_cell = path[door_index]
-    for index, (pr, pc) in enumerate(path):
-        grid[pr][pc] = token if token == DOOR and index == door_index else FLOOR
-        floor_heights[pr][pc] = source_height if index <= door_index else target_height
-    return door_cell
+
+def _box_cells(room_boxes: dict[str, Box] | None, start: Cell, end: Cell) -> set[Cell]:
+    if not room_boxes:
+        return {start, end}
+    cells: set[Cell] = set()
+    for box in room_boxes.values():
+        if box["r"] <= start[0] < box["r"] + box["h"] and box["c"] <= start[1] < box["c"] + box["w"]:
+            cells.update(_cells_in_box(box))
+        if box["r"] <= end[0] < box["r"] + box["h"] and box["c"] <= end[1] < box["c"] + box["w"]:
+            cells.update(_cells_in_box(box))
+    return cells
+
+
+def _cells_in_box(box: Box) -> set[Cell]:
+    return {
+        (row, column)
+        for row in range(box["r"], box["r"] + box["h"])
+        for column in range(box["c"], box["c"] + box["w"])
+    }
+
+
+def _obstacle_aware_path(
+    grid: list[list[str]],
+    start: Cell,
+    end: Cell,
+    room_boxes: dict[str, Box],
+    routed_cells: set[Cell],
+) -> list[Cell]:
+    path = _search_grid_path(grid, start, end, room_boxes, routed_cells, block_routed=True)
+    if path is None:
+        path = _search_grid_path(grid, start, end, room_boxes, routed_cells, block_routed=False)
+    if path is None:
+        raise ValueError(f"no obstacle-aware corridor route between {start!r} and {end!r}")
+    return path
+
+
+def _search_grid_path(
+    grid: list[list[str]],
+    start: Cell,
+    end: Cell,
+    room_boxes: dict[str, Box],
+    routed_cells: set[Cell],
+    *,
+    block_routed: bool,
+) -> list[Cell] | None:
+    endpoint_cells = _box_cells(room_boxes, start, end)
+    room_cells = set().union(*(_cells_in_box(box) for box in room_boxes.values()))
+    blocked = (room_cells - endpoint_cells) | (routed_cells if block_routed else set())
+    height = len(grid)
+    width = len(grid[0]) if height else 0
+    frontier = deque([start])
+    previous: dict[Cell, Cell | None] = {start: None}
+    while frontier:
+        cell = frontier.popleft()
+        if cell == end:
+            break
+        row, column = cell
+        neighbors = ((row, column + 1), (row + 1, column), (row, column - 1), (row - 1, column))
+        for neighbor in neighbors:
+            nr, nc = neighbor
+            if not (0 <= nr < height and 0 <= nc < width):
+                continue
+            if neighbor in previous or neighbor in blocked:
+                continue
+            if grid[nr][nc] != "empty" and neighbor not in endpoint_cells and neighbor not in routed_cells:
+                continue
+            previous[neighbor] = cell
+            frontier.append(neighbor)
+    if end not in previous:
+        return None
+    path: list[Cell] = []
+    current: Cell | None = end
+    while current is not None:
+        path.append(current)
+        current = previous[current]
+    path.reverse()
+    return path
+
 
 
 def _apply_path_materials(

@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import tempfile
 from collections import Counter, defaultdict, deque
 from pathlib import Path
 from typing import Any
@@ -1882,13 +1883,23 @@ def generate_synthetic_training_records(tier: str, *, count: int, seed: int) -> 
         report = validate_document(document)
         if report.valid and signature not in signatures:
             compile_to_plan = None
+            export_report: dict[str, Any] | None = None
             try:
-                from romerodsl.compiler import compile_to_plan as _compile_to_plan
+                from romerodsl.compiler import (
+                    compile_to_plan as _compile_to_plan,
+                    compile_to_wad as _compile_to_wad,
+                    validate_physical_progression as _validate_physical_progression,
+                )
                 compile_to_plan = _compile_to_plan
                 compile_to_plan(document)
+                physical_report = _validate_physical_progression(document)
+                if not physical_report["valid"]:
+                    raise ValueError("compiled physical progression is invalid")
+                with tempfile.TemporaryDirectory(prefix="romerodsl_synthetic_") as temp_dir:
+                    export_report = _compile_to_wad(document, Path(temp_dir) / "MAP01.wad")
             except Exception:
                 compile_to_plan = None
-            if compile_to_plan is not None:
+            if compile_to_plan is not None and export_report is not None and export_report.get("valid"):
                 metrics = structural_metrics(document)
                 records.append(
                     {
@@ -1906,6 +1917,8 @@ def generate_synthetic_training_records(tier: str, *, count: int, seed: int) -> 
                             "complexity_tier": tier,
                             "bucket": f"synthetic_{tier}",
                             "colors": metrics["progression"]["gate_colors"],
+                            "static_export_valid": True,
+                            "engine_tested": False,
                         },
                         "features": {
                             "room_count": metrics["space_count"],

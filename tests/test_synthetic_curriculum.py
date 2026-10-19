@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from romerodsl.compiler import compile_to_plan, compile_to_wad
+from romerodsl.compiler import compile_to_plan, compile_to_wad, validate_physical_progression
 from romerodsl.extraction import (
     SYNTHETIC_TIERS,
     generate_synthetic_dsl,
@@ -77,6 +77,14 @@ class SyntheticCurriculumTests(unittest.TestCase):
         self.assertEqual(report["locked_door_colors"], {"blue": 1, "red": 1, "yellow": 1})
         self.assertTrue(report["key_lock_pairs_valid"])
 
+    def test_compiled_layout_checks_required_gate_accessibility(self) -> None:
+        document = generate_synthetic_dsl("advanced", seed=803)
+        report = validate_physical_progression(document)
+        self.assertTrue(report["valid"], report)
+        self.assertTrue(report["gate_checks"])
+        self.assertTrue(all(check["key_reachable_before_gate"] for check in report["gate_checks"]))
+        self.assertTrue(all(not check["exit_reachable_without_gate"] for check in report["gate_checks"]))
+
     def test_prompts_truthfully_describe_exact_authored_room_count(self) -> None:
         records = generate_synthetic_training_records("advanced", count=4, seed=901)
         self.assertEqual(len(records), 4)
@@ -86,6 +94,8 @@ class SyntheticCurriculumTests(unittest.TestCase):
             room_count = len(document["spaces"])
             self.assertIn(str(room_count), prompt)
             self.assertEqual(record["labels"]["dataset_class"], "synthetic")
+            self.assertTrue(record["labels"]["static_export_valid"])
+            self.assertFalse(record["labels"]["engine_tested"])
             self.assertEqual(record["labels"]["complexity_tier"], "advanced")
             self.assertEqual(record["features"]["room_count"], room_count)
 
